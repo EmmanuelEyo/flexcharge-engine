@@ -19,6 +19,25 @@ if (!fs.existsSync(swaggerPath)) {
 }
 const swaggerDocument = JSON.parse(fs.readFileSync(swaggerPath, "utf8"));
 
+// Dynamically inject production URL from API_BASE_URL environment variable
+if (process.env.API_BASE_URL) {
+  const baseUrl = process.env.API_BASE_URL.replace(/\/$/, "");
+  const prodUrl = `${baseUrl}/api`;
+
+  if (!swaggerDocument.servers) {
+    swaggerDocument.servers = [];
+  }
+
+  if (!swaggerDocument.servers.some((s: any) => s.url === prodUrl)) {
+    if (!prodUrl.includes("localhost") && !prodUrl.includes("127.0.0.1")) {
+      swaggerDocument.servers.unshift({
+        url: prodUrl,
+        description: "Production Server",
+      });
+    }
+  }
+}
+
 // Route imports
 import authRoutes from "./routes/auth.routes.js";
 import planRoutes from "./routes/plan.routes.js";
