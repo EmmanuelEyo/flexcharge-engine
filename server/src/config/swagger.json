@@ -1,0 +1,556 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "FlexCharge Subscription Engine API",
+    "description": "API documentation for the FlexCharge Subscription Engine. Supports Tenant Identity, API Key Authentication, Plan and Customer management, Webhook configs, and Customer Portal verification.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:7000/api",
+      "description": "Local Development Server"
+    }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "summary": "Register a new Tenant",
+        "description": "Create a new tenant (downstream business team) account.",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "email", "password"],
+                "properties": {
+                  "name": { "type": "string", "example": "Acme Corp" },
+                  "email": { "type": "string", "format": "email", "example": "admin@acme.com" },
+                  "password": { "type": "string", "example": "SecurePassword123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Tenant created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "tenant": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string", "example": "651a2b3c4d5e6f7a8b9c0d1e" },
+                            "name": { "type": "string", "example": "Acme Corp" },
+                            "email": { "type": "string", "example": "admin@acme.com" }
+                          }
+                        },
+                        "token": { "type": "string", "example": "eyJhbGciOiJIUzI1NiIsIn..." }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Tenant Login",
+        "description": "Authenticate tenant credentials and return a JWT session token.",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email", "example": "admin@acme.com" },
+                  "password": { "type": "string", "example": "SecurePassword123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Logged in successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "tenant": { "type": "object" },
+                        "token": { "type": "string", "example": "eyJhbGciOiJIUzI1NiIsIn..." }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "summary": "Get Current Tenant",
+        "description": "Retrieves the currently authenticated tenant's profile. Used by the frontend to hydrate state on page reload.",
+        "tags": ["Authentication"],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Tenant profile retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/change-password": {
+      "post": {
+        "summary": "Change Password",
+        "description": "Allows an authenticated tenant to change their password.",
+        "tags": ["Authentication"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["currentPassword", "newPassword"],
+                "properties": {
+                  "currentPassword": { "type": "string", "example": "OldSecurePassword123" },
+                  "newPassword": { "type": "string", "example": "NewSecurePassword456" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Password changed successfully" }
+        }
+      }
+    },
+    "/auth/forgot-password": {
+      "post": {
+        "summary": "Request Password Reset",
+        "description": "Generates a reset token and sends a reset link to the tenant's email.",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": {
+                  "email": { "type": "string", "format": "email", "example": "admin@acme.com" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Reset link sent (if email is registered)" }
+        }
+      }
+    },
+    "/auth/reset-password": {
+      "post": {
+        "summary": "Reset Password",
+        "description": "Sets a new password using a valid reset token.",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["token", "newPassword"],
+                "properties": {
+                  "token": { "type": "string", "example": "abc123xyz" },
+                  "newPassword": { "type": "string", "example": "NewSecurePassword456" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Password reset successfully" }
+        }
+      }
+    },
+    "/auth/api-keys": {
+      "get": {
+        "summary": "List API Keys",
+        "description": "List all active API keys issued to this tenant. Never returns raw keys.",
+        "tags": ["API Keys"],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "List of API keys retrieved" }
+        }
+      },
+      "post": {
+        "summary": "Create API Key",
+        "description": "Generate a new API key. The raw key is returned ONLY once in the response.",
+        "tags": ["API Keys"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string", "example": "Production API Key" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "API Key created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "apiKey": { "type": "object" },
+                        "rawKey": { "type": "string", "example": "fl_live_abcdef123456789..." }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/api-keys/{id}": {
+      "delete": {
+        "summary": "Revoke API Key",
+        "description": "Revoke programmatic access for an API key by ID.",
+        "tags": ["API Keys"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "API Key revoked" }
+        }
+      }
+    },
+    "/auth/webhook": {
+      "patch": {
+        "summary": "Update Webhook Destination URL",
+        "description": "Update the webhook URL where the engine dispatches subscription and payment event webhooks.",
+        "tags": ["Webhooks"],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["webhookUrl"],
+                "properties": {
+                  "webhookUrl": { "type": "string", "format": "uri", "example": "https://api.mybusiness.com/webhooks" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Webhook configuration updated" }
+        }
+      }
+    },
+    "/auth/webhook-secret": {
+      "get": {
+        "summary": "Retrieve Webhook Signing Secret",
+        "description": "Retrieve the webhook signing secret for verifying signatures on event dispatches.",
+        "tags": ["Webhooks"],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Webhook secret retrieved" }
+        }
+      }
+    },
+    "/plans": {
+      "get": {
+        "summary": "List Plans",
+        "description": "Retrieve all plans belonging to this tenant.",
+        "tags": ["Plans"],
+        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "List of plans" }
+        }
+      },
+      "post": {
+        "summary": "Create Plan",
+        "description": "Create a new subscription plan. Plan amounts should be stored in Kobo (e.g. ₦1,000 = 100000).",
+        "tags": ["Plans"],
+        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "amount", "interval"],
+                "properties": {
+                  "name": { "type": "string", "example": "Pro Monthly Plan" },
+                  "amount": { "type": "integer", "example": 500000 },
+                  "currency": { "type": "string", "default": "NGN", "example": "NGN" },
+                  "interval": { "type": "string", "enum": ["weekly", "monthly", "quarterly", "yearly"], "example": "monthly" },
+                  "trialDays": { "type": "integer", "default": 0, "example": 7 },
+                  "features": { "type": "array", "items": { "type": "string" }, "example": ["Uncapped features", "Priority Support"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Plan created successfully" }
+        }
+      }
+    },
+    "/plans/{id}": {
+      "get": {
+        "summary": "Get Plan Details",
+        "tags": ["Plans"],
+        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Plan details retrieved" }
+        }
+      },
+      "patch": {
+        "summary": "Update Plan",
+        "tags": ["Plans"],
+        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "amount": { "type": "integer" },
+                  "features": { "type": "array", "items": { "type": "string" } },
+                  "isActive": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Plan updated" }
+        }
+      },
+      "delete": {
+        "summary": "Delete Plan (Soft Delete)",
+        "tags": ["Plans"],
+        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Plan soft-deleted (deactivated)" }
+        }
+      }
+    },
+    "/customers": {
+      "get": {
+        "summary": "List Customers",
+        "description": "List customers belonging to the tenant. Supports pagination parameters.",
+        "tags": ["Customers"],
+        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "string", "default": "1" } },
+          { "name": "limit", "in": "query", "schema": { "type": "string", "default": "20" } }
+        ],
+        "responses": {
+          "200": { "description": "List of customers" }
+        }
+      },
+      "post": {
+        "summary": "Create Customer",
+        "description": "Add a new customer under the tenant.",
+        "tags": ["Customers"],
+        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": {
+                  "email": { "type": "string", "format": "email", "example": "customer@acme.com" },
+                  "name": { "type": "string", "example": "John Doe" },
+                  "phone": { "type": "string", "example": "+2348012345678" },
+                  "metadata": { "type": "object", "example": { "company": "Acme Partner" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Customer registered" }
+        }
+      }
+    },
+    "/customers/{id}": {
+      "get": {
+        "summary": "Get Customer Details",
+        "tags": ["Customers"],
+        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Customer details retrieved" }
+        }
+      },
+      "patch": {
+        "summary": "Update Customer",
+        "tags": ["Customers"],
+        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "phone": { "type": "string" },
+                  "metadata": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Customer updated" }
+        }
+      }
+    },
+    "/portal/sessions": {
+      "post": {
+        "summary": "Create Portal Session",
+        "description": "Generate a short-lived customer portal JWT token. Called by the Tenant.",
+        "tags": ["Customer Portal"],
+        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["customerId"],
+                "properties": {
+                  "customerId": { "type": "string", "example": "651a2b3c4d5e6f7a8b9c0d1e" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Portal token generated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "portalToken": { "type": "string" },
+                        "portalUrl": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/me": {
+      "get": {
+        "summary": "Get Customer Profile (Portal)",
+        "description": "Retrieve customer details. Authenticated using the customer's short-lived Portal JWT.",
+        "tags": ["Customer Portal"],
+        "security": [{ "portalAuth": [] }],
+        "responses": {
+          "200": { "description": "Customer profile retrieved" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Provide the Tenant JWT token returned on Registration/Login."
+      },
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "Provide the programmatic API key issued to the Tenant."
+      },
+      "portalAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Provide the short-lived Portal token returned by POST /portal/sessions."
+      }
+    }
+  }
+}
