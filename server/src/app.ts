@@ -58,9 +58,27 @@ const app = express();
 
 // ===== SECURITY MIDDLEWARE =====
 app.use(helmet()); // Security headers
+
+const allowedOrigins = [
+  "https://flexcharge-engine.vercel.app",
+  "http://localhost:3000",
+];
+
 app.use(
   cors({
-    origin: process.env.NODE_ENV === "production" ? process.env.API_BASE_URL : "*",
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, postman)
+      if (!origin) return callback(null, true);
+      
+      // Remove trailing slash if present
+      const cleanOrigin = origin.replace(/\/$/, "");
+      
+      if (allowedOrigins.includes(cleanOrigin) || process.env.NODE_ENV !== "production") {
+        return callback(null, true);
+      }
+      
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
   })
 );
