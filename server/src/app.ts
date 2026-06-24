@@ -13,9 +13,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Read swagger spec
-const swaggerDocument = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "./config/swagger.json"), "utf8")
-);
+let swaggerPath = path.join(__dirname, "./config/swagger.json");
+if (!fs.existsSync(swaggerPath)) {
+  swaggerPath = path.join(__dirname, "../src/config/swagger.json");
+}
+const swaggerDocument = JSON.parse(fs.readFileSync(swaggerPath, "utf8"));
 
 // Route imports
 import authRoutes from "./routes/auth.routes.js";
