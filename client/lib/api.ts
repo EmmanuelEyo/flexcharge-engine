@@ -17,6 +17,10 @@ api.interceptors.request.use(async (config) => {
   if (typeof window !== "undefined") {
     const session = await getSession();
     token = (session as any)?.accessToken;
+
+    if (!token) {
+      token = sessionStorage.getItem("fc_token") ?? undefined;
+    }
   } else {
     const { getServerSession } = await import("next-auth");
     const { authOptions } = await import("@/lib/authOptions");
@@ -29,6 +33,7 @@ api.interceptors.request.use(async (config) => {
   }
   return config;
 });
+
 
 api.interceptors.response.use(
   (response) => response,
