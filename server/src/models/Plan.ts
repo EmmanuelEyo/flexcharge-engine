@@ -24,6 +24,7 @@ export interface IPlan extends Document {
   intervalDays?: number;
   trialDays: number;
   features: string[];
+  creditsPerCycle?: number;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -85,6 +86,17 @@ const planSchema = new Schema<IPlan>(
     features: {
       type: [String],
       default: [],
+    },
+    creditsPerCycle: {
+      type: Number,
+      min: [0, "Credits per cycle cannot be negative"],
+      validate: {
+        validator: function (v: any) {
+          if (v === undefined) return true;
+          return Number.isInteger(v);
+        },
+        message: "Credits per cycle must be an integer (kobo). Got: {VALUE}",
+      },
     },
     isActive: {
       type: Boolean,

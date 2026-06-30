@@ -3,6 +3,10 @@ import { MongoBackend } from "@agendajs/mongo-backend";
 import { env } from "./environment.js";
 import { logger } from "../utils/logger.js";
 import { defineWebhookJobs } from "../jobs/webhookDelivery.js";
+import { defineTokenRefreshJob, TOKEN_REFRESH_JOB_NAME } from "../jobs/tokenRefresh.js";
+import { defineDailyBillingScanJob, DAILY_BILLING_SCAN_JOB_NAME } from "../jobs/dailyBillingScan.js";
+import { defineDunningRetryJob, DUNNING_RETRY_JOB_NAME } from "../jobs/dunningRetry.js";
+import { defineWalletAutoTopupJob, WALLET_AUTO_TOPUP_JOB_NAME } from "../jobs/walletAutoTopup.js";
 
 /**
  * Agenda configuration — MongoDB-backed job scheduler.
@@ -29,6 +33,10 @@ export function getAgenda(): Agenda {
 
     // Register all job definitions
     defineWebhookJobs(agenda);
+    defineTokenRefreshJob(agenda);
+    defineDailyBillingScanJob(agenda);
+    defineDunningRetryJob(agenda);
+    defineWalletAutoTopupJob(agenda);
 
     // Error handling
     agenda.on("error", (err) => {
@@ -68,6 +76,22 @@ export async function startAgenda(): Promise<void> {
 
   // Schedule recurring jobs
   await agendaInstance.every("1 minute", "retry-pending-webhooks");
+
+  // Refresh Nomba access token every 25 minutes (tokens expire in 30 min)
+  // Per AGENTS.md §2.3
+  await agendaInstance.every("25 minutes", TOKEN_REFRESH_JOB_NAME);
+
+  // Daily billing scan: runs every hour to find and charge due subscriptions
+  // Per overall_implementation_plan.md §6.2
+  await agendaInstance.every("1 hour", DAILY_BILLING_SCAN_JOB_NAME);
+
+  // Dunning retry scan: runs every 5 minutes to process scheduled retries
+  // Per overall_implementation_plan.md §6.3
+  await agendaInstance.every("5 minutes", DUNNING_RETRY_JOB_NAME);
+
+  // Wallet auto top-up scan: runs every 5 minutes
+  // Per feature_implementation_blueprint.md §1
+  await agendaInstance.every("5 minutes", WALLET_AUTO_TOPUP_JOB_NAME);
 
   logger.info("Agenda scheduler started with recurring jobs");
 }

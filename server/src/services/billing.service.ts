@@ -1,0 +1,315 @@
+import { Types } from "mongoose";
+import { Subscription } from "../models/Subscription.js";
+import { Invoice } from "../models/Invoice.js";
+import { Plan } from "../models/Plan.js";
+import { Customer } from "../models/Customer.js";
+import { DunningAttempt } from "../models/DunningAttempt.js";
+import { nombaService } from "./nomba.service.js";
+import { queueWebhook } from "./webhook.service.js";
+import { logger } from "../utils/logger.js";
+import { INTERVAL_DAYS } from "../types/subscription.types.js";
+import type { PlanInterval } from "../types/subscription.types.js";
+
+/**
+ * Billing Service — Core renewal scanning and charge processing.
+ *
+ * Handles:
+ * 1. Finding subscriptions due for renewal
+ * 2. Charging tokenized cards via Nomba
+ * 3. Advancing billing periods on success
+ * 4. Transitioning to past_due and initiating dunning on failure
+ * 5. Processing cancel-at-period-end subscriptions
+ *
+ * Per overall_implementation_plan.md §6.2 (Daily Billing Scan)
+ * Per AGENTS.md §3: Financial values in KOBO (integers only)
+ */
+
+/**
+ * Calculate the next billing date by advancing from the current period end
+ * by the plan's interval.
+ */
+export function calculateNextBillingDate(
+  currentPeriodEnd: Date,
+  interval: PlanInterval
+): Date {
+  const days = INTERVAL_DAYS[interval];
+  const next = new Date(currentPeriodEnd);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+/**
+ * Find all active subscriptions that are due for renewal.
+ * Used by the dailyBillingScan Agenda job.
+ */
+export async function findDueSubscriptions(): Promise<typeof Subscription extends { find: (...args: any[]) => infer R } ? Awaited<R> : never> {
+  const now = new Date();
+
+  return Subscription.find({
+    status: "active",
+    nextBillingDate: { $lte: now },
+    cancelAtPeriodEnd: { $ne: true },
+  })
+    .populate("planId")
+    .populate("customerId");
+}
+
+/**
+ * Find subscriptions that should be canceled at period end.
+ */
+export async function findCancelAtPeriodEndSubscriptions() {
+  const now = new Date();
+
+  return Subscription.find({
+    status: "active",
+    cancelAtPeriodEnd: true,
+    currentPeriodEnd: { $lte: now },
+  });
+}
+
+/**
+ * Process a single subscription renewal.
+ *
+ * Per overall_implementation_plan.md §6.2:
+ * 1. Generate idempotencyKey = "bill_subId_periodEnd"
+ * 2. Create Invoice (status: pending)
+ * 3. Call nomba.chargeTokenizedCard(tokenKey, amount)
+ * 4. On success: Update Invoice → paid, advance billing dates
+ * 5. On failure: Update Invoice → failed, transition to past_due, create DunningAttempt
+ */
+export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
+  success: boolean;
+  invoiceId?: Types.ObjectId;
+  error?: string;
+}> {
+  const subscription = await Subscription.findById(subscriptionId)
+    .populate("planId")
+    .populate("customerId");
+
+  if (!subscription) {
+    return { success: false, error: "Subscription not found" };
+  }
+
+  if (subscription.status !== "active") {
+    return { success: false, error: `Subscription is ${subscription.status}, not active` };
+  }
+
+  if (!subscription.tokenKey) {
+    return { success: false, error: "No payment token on file" };
+  }
+
+  const plan = subscription.planId as any;
+  const customer = subscription.customerId as any;
+
+  if (!plan || !customer) {
+    return { success: false, error: "Plan or customer not found" };
+  }
+
+  // Generate idempotency key to prevent double charges
+  const periodEndStr = subscription.currentPeriodEnd
+    ? subscription.currentPeriodEnd.toISOString().split("T")[0]
+    : Date.now().toString();
+  const idempotencyKey = `bill_${subscription._id}_${periodEndStr}`;
+
+  // Check if we already billed for this period
+  const existingInvoice = await Invoice.findOne({ idempotencyKey });
+  if (existingInvoice) {
+    logger.warn(
+      { subscriptionId, idempotencyKey },
+      "Duplicate billing attempt detected — skipping"
+    );
+    return { success: false, error: "Already billed for this period" };
+  }
+
+  // Create pending invoice
+  const orderReference = `inv_${subscription._id}_${Date.now()}`;
+  const invoice = await Invoice.create({
+    tenantId: subscription.tenantId,
+    subscriptionId: subscription._id,
+    customerId: customer._id,
+    amount: plan.amount,
+    currency: plan.currency || "NGN",
+    status: "pending",
+    nombaOrderReference: orderReference,
+    description: `${plan.name} — Renewal`,
+    isRenewal: true,
+    idempotencyKey,
+  });
+
+  try {
+    // Charge the tokenized card via Nomba
+    const chargeResult = await nombaService.chargeTokenizedCard({
+      tokenKey: subscription.tokenKey,
+      orderReference,
+      amount: plan.amount,
+      currency: plan.currency || "NGN",
+      customerEmail: customer.email,
+      customerId: customer._id.toString(),
+    });
+
+    if (
+      chargeResult.status === "SUCCESS" ||
+      chargeResult.status === "APPROVED"
+    ) {
+      // === PAYMENT SUCCESS ===
+      invoice.status = "paid";
+      invoice.paidAt = new Date();
+      invoice.nombaTransactionId = chargeResult.transactionId;
+      await invoice.save();
+
+      // Advance billing dates
+      const now = new Date();
+      const newPeriodStart = subscription.currentPeriodEnd || now;
+      const newPeriodEnd = calculateNextBillingDate(
+        newPeriodStart,
+        plan.interval
+      );
+
+      subscription.currentPeriodStart = newPeriodStart;
+      subscription.currentPeriodEnd = newPeriodEnd;
+      subscription.nextBillingDate = newPeriodEnd;
+      subscription.dunningAttemptCount = 0;
+      subscription.lastDunningAt = undefined;
+      await subscription.save();
+
+      // Fire webhook: subscription.renewed
+      await queueWebhook(subscription.tenantId, "subscription.renewed", {
+        subscriptionId: subscription._id,
+        customerId: customer._id,
+        planId: plan._id,
+        amount: plan.amount,
+        currency: plan.currency,
+        currentPeriodStart: newPeriodStart.toISOString(),
+        currentPeriodEnd: newPeriodEnd.toISOString(),
+        invoiceId: invoice._id,
+      });
+
+      logger.info(
+        {
+          subscriptionId: subscription._id,
+          invoiceId: invoice._id,
+          nextBilling: newPeriodEnd.toISOString(),
+        },
+        "Subscription renewed successfully"
+      );
+
+      return { success: true, invoiceId: invoice._id };
+    } else {
+      // === PAYMENT FAILED ===
+      return await handleChargeFailed(
+        subscription,
+        invoice,
+        chargeResult.declineCode,
+        chargeResult.message || "Payment declined"
+      );
+    }
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown payment error";
+
+    return await handleChargeFailed(
+      subscription,
+      invoice,
+      undefined,
+      errorMessage
+    );
+  }
+}
+
+/**
+ * Handle a failed charge attempt.
+ * Transitions subscription to past_due and creates a DunningAttempt.
+ */
+async function handleChargeFailed(
+  subscription: any,
+  invoice: any,
+  declineCode?: string,
+  failureReason?: string
+): Promise<{ success: false; invoiceId: Types.ObjectId; error: string }> {
+  // Update invoice
+  invoice.status = "failed";
+  invoice.failureReason = failureReason;
+  await invoice.save();
+
+  // Transition subscription to past_due (if currently active)
+  if (subscription.status === "active") {
+    (subscription as any)._previousStatus = subscription.status;
+    subscription.status = "past_due";
+  }
+  subscription.dunningAttemptCount += 1;
+  subscription.lastDunningAt = new Date();
+  await subscription.save();
+
+  // Create DunningAttempt record
+  const retryDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // +24h default
+  await DunningAttempt.create({
+    tenantId: subscription.tenantId,
+    subscriptionId: subscription._id,
+    invoiceId: invoice._id,
+    attemptNumber: subscription.dunningAttemptCount,
+    scheduledFor: retryDate,
+    status: "scheduled",
+    failureReason,
+    nextRetryAt: retryDate,
+    declineCode,
+  });
+
+  // Fire webhook: subscription.payment_failed
+  await queueWebhook(subscription.tenantId, "subscription.payment_failed", {
+    subscriptionId: subscription._id,
+    invoiceId: invoice._id,
+    amount: invoice.amount,
+    currency: invoice.currency,
+    failureReason,
+    declineCode,
+    attemptNumber: subscription.dunningAttemptCount,
+  });
+
+  logger.warn(
+    {
+      subscriptionId: subscription._id,
+      invoiceId: invoice._id,
+      declineCode,
+      failureReason,
+      attemptNumber: subscription.dunningAttemptCount,
+    },
+    "Subscription charge failed — entering dunning"
+  );
+
+  return {
+    success: false,
+    invoiceId: invoice._id,
+    error: failureReason || "Payment failed",
+  };
+}
+
+/**
+ * Process subscriptions marked for cancel-at-period-end.
+ * Called by the daily billing scan.
+ */
+export async function processCancelAtPeriodEnd(): Promise<number> {
+  const subscriptions = await findCancelAtPeriodEndSubscriptions();
+  let canceledCount = 0;
+
+  for (const subscription of subscriptions) {
+    (subscription as any)._previousStatus = subscription.status;
+    subscription.status = "canceled";
+    subscription.canceledAt = new Date();
+    await subscription.save();
+
+    // Fire webhook: subscription.canceled
+    await queueWebhook(subscription.tenantId, "subscription.canceled", {
+      subscriptionId: subscription._id,
+      reason: subscription.cancellationReason || "Period ended",
+    });
+
+    canceledCount++;
+
+    logger.info(
+      { subscriptionId: subscription._id },
+      "Subscription canceled at period end"
+    );
+  }
+
+  return canceledCount;
+}
