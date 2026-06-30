@@ -43,6 +43,10 @@ import authRoutes from "./routes/auth.routes.js";
 import planRoutes from "./routes/plan.routes.js";
 import customerRoutes from "./routes/customer.routes.js";
 import portalRoutes from "./routes/portal.routes.js";
+import webhookRoutes from "./routes/webhook.routes.js";
+import subscriptionRoutes from "./routes/subscription.routes.js";
+import invoiceRoutes from "./routes/invoice.routes.js";
+import walletRoutes from "./routes/wallet.routes.js";
 
 /**
  * Express Application Setup
@@ -83,6 +87,9 @@ app.use(
   })
 );
 
+// ===== WEBHOOK ROUTES =====
+app.use("/webhooks", webhookRoutes);
+
 // ===== BODY PARSING =====
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -107,6 +114,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/plans", planRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/portal", portalRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
+app.use("/api/invoices", invoiceRoutes);
+app.use("/api/wallets", walletRoutes);
 
 // ===== HEALTH CHECK =====
 app.get("/health", (_req, res) => {
