@@ -1319,6 +1319,264 @@
                 }
               }
             }
+        }
+      }
+    },
+    "/subscriptions/{id}/simulate-change": {
+      "post": {
+        "summary": "Simulate Plan Change (Proration Dry-Run)",
+        "description": "Preview the financial impact (credits, new charges, amount due) of changing a subscription's plan before applying the change.",
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "newPlanId"
+                ],
+                "properties": {
+                  "newPlanId": {
+                    "type": "string",
+                    "example": "651a2b3c4d5e6f7a8b9c0d1f"
+                  },
+                  "changeDate": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2026-07-01T17:25:39.000Z"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Simulation generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "simulation": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "warning": {
+                          "type": "string",
+                          "example": "This is a preview. No charges have been made."
+                        },
+                        "subscription": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "currentPlanId": {
+                              "type": "string"
+                            },
+                            "currentPlanName": {
+                              "type": "string"
+                            },
+                            "newPlanId": {
+                              "type": "string"
+                            },
+                            "newPlanName": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "proration": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "example": "upgrade"
+                            },
+                            "changeDate": {
+                              "type": "string"
+                            },
+                            "currentPeriod": {
+                              "type": "object",
+                              "properties": {
+                                "start": {
+                                  "type": "string"
+                                },
+                                "end": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "totalDaysInPeriod": {
+                              "type": "number"
+                            },
+                            "daysRemaining": {
+                              "type": "number"
+                            },
+                            "unusedCredit": {
+                              "type": "number"
+                            },
+                            "newPlanCostRemaining": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        "invoice": {
+                          "type": "object",
+                          "properties": {
+                            "subtotal": {
+                              "type": "number"
+                            },
+                            "subtotalFormatted": {
+                              "type": "string"
+                            },
+                            "amountDue": {
+                              "type": "number"
+                            },
+                            "amountDueFormatted": {
+                              "type": "string"
+                            },
+                            "credit": {
+                              "type": "number"
+                            },
+                            "creditFormatted": {
+                              "type": "string"
+                            },
+                            "currency": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "nextBillingDate": {
+                          "type": "string"
+                        },
+                        "nextBillingAmount": {
+                          "type": "number"
+                        },
+                        "nextBillingAmountFormatted": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}/change-plan": {
+      "post": {
+        "summary": "Change Subscription Plan (Execute Upgrade/Downgrade)",
+        "description": "Upgrade or downgrade an active subscription to a new plan, calculating proration and executing charges or issuing credits immediately.",
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "newPlanId"
+                ],
+                "properties": {
+                  "newPlanId": {
+                    "type": "string",
+                    "example": "651a2b3c4d5e6f7a8b9c0d1f"
+                  },
+                  "changeDate": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2026-07-01T17:25:39.000Z"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plan changed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Subscription plan changed successfully"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "subscription": {
+                          "$ref": "#/components/schemas/Subscription"
+                        },
+                        "proration": {
+                          "type": "object"
+                        },
+                        "invoice": {
+                          "$ref": "#/components/schemas/Invoice"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
