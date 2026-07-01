@@ -21,19 +21,14 @@ import {
 const router = Router();
 
 /**
- * Subscription Routes — All require authentication (API key or JWT).
- *
- * POST   /subscriptions                       — Create a new subscription (returns checkout link)
- * GET    /subscriptions                       — List all subscriptions (?status=active&customerId=...)
- * GET    /subscriptions/:id                   — Get subscription details
- * POST   /subscriptions/:id/cancel            — Cancel a subscription
- * POST   /subscriptions/:id/change-plan       — Execute a plan upgrade or downgrade (proration)
- * POST   /subscriptions/:id/simulate-change   — Dry-run calculation for plan changes
- * POST   /subscriptions/:id/pause             — Pause an active subscription
- * POST   /subscriptions/:id/resume            — Resume a paused subscription
- *
- * Per overall_implementation_plan.md §7 (Subscriptions API surface)
+ * Public Checkout Route
+ * POST /subscriptions/public-checkout — Initiates checkout from public hosted page
  */
+router.post("/public-checkout", async (req, res, next) => {
+  // To be implemented in controller
+  const { publicCheckout } = await import("../controllers/subscription.controller.js");
+  return publicCheckout(req, res, next);
+});
 
 router.use(authenticate);
 

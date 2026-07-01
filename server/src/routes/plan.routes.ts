@@ -5,6 +5,7 @@ import {
   getPlan,
   updatePlan,
   deletePlan,
+  getPublicPlan,
 } from "../controllers/plan.controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
@@ -14,6 +15,12 @@ import {
 } from "../validators/plan.validator.js";
 
 const router = Router();
+
+/**
+ * Public Plan Routes
+ * GET    /plans/public/:id — Get a single plan (unauthenticated) for checkout pages
+ */
+router.get("/public/:id", getPublicPlan);
 
 /**
  * Plan Routes — All require authentication (API key or JWT).

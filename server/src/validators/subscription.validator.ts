@@ -23,6 +23,7 @@ export const createSubscriptionSchema = z.object({
     .min(1, "Plan ID is required")
     .regex(/^[a-f\d]{24}$/i, "Invalid Plan ID format"),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  returnUrl: z.string().url("Invalid return URL format").optional(),
 });
 
 /**
@@ -47,6 +48,7 @@ export const changePlanSchema = z.object({
     .string()
     .min(1, "New Plan ID is required")
     .regex(/^[a-f\d]{24}$/i, "Invalid Plan ID format"),
+  changeDate: z.string().datetime().optional(),
 });
 
 /**
@@ -58,6 +60,7 @@ export const simulateChangePlanSchema = z.object({
     .string()
     .min(1, "New Plan ID is required")
     .regex(/^[a-f\d]{24}$/i, "Invalid Plan ID format"),
+  changeDate: z.string().datetime().optional(),
 });
 
 export type CreateSubscriptionInput = z.infer<typeof createSubscriptionSchema>;
