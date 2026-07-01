@@ -110,7 +110,7 @@ export async function createSubscription(
           amount: plan.amount, // KOBO — service converts to NGN
           currency: plan.currency,
           customerEmail: customer.email,
-          callbackUrl: `${env.API_BASE_URL}/webhooks/nomba`,
+          callbackUrl: input.returnUrl || `${env.FRONTEND_URL || "http://localhost:3000"}/pay/success`,
           tokenizeCard: true,
         });
 
@@ -280,6 +280,107 @@ export async function cancelSubscription(
 }
 
 /**
+ * POST /subscriptions/public-checkout
+ * Create a subscription from the hosted public checkout page.
+ * Creates the customer on the fly if they don't exist.
+ */
+export async function publicCheckout(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { planId, email, name, returnUrl } = req.body;
+
+    if (!planId || !email || !name) {
+      throw new AppError("planId, email, and name are required", 400);
+    }
+
+    // Find the plan to get the tenantId
+    const plan = await Plan.findOne({ _id: planId, isActive: true });
+    if (!plan) {
+      throw new NotFoundError("Plan");
+    }
+
+    const tenantId = plan.tenantId;
+
+    // Find or create customer
+    let customer = await Customer.findOne({ tenantId, email });
+    if (!customer) {
+      customer = await Customer.create({
+        tenantId,
+        email,
+        name: name,
+      });
+    }
+
+    // Create subscription in "pending" status
+    const subscription = await Subscription.create({
+      tenantId,
+      customerId: customer._id,
+      planId: plan._id,
+      status: "pending",
+      metadata: { source: "hosted_checkout" },
+    });
+
+    const orderReference = `sub_${subscription._id}_${Date.now()}`;
+    const idempotencyKey = `initial_${subscription._id}`;
+
+    const invoice = await Invoice.create({
+      tenantId,
+      subscriptionId: subscription._id,
+      customerId: customer._id,
+      amount: plan.amount,
+      currency: plan.currency,
+      status: "pending",
+      nombaOrderReference: orderReference,
+      description: `${plan.name} — Initial payment`,
+      isRenewal: false,
+      idempotencyKey,
+    });
+
+    let checkoutLink: string | undefined;
+    let savedOrderRef = orderReference;
+
+    if (nombaService.isConfigured()) {
+      try {
+        const checkout = await nombaService.createCheckoutOrder({
+          orderReference,
+          amount: plan.amount,
+          currency: plan.currency,
+          customerEmail: customer.email,
+          callbackUrl: returnUrl || `${env.FRONTEND_URL || "http://localhost:3000"}/pay/success`,
+          tokenizeCard: true,
+        });
+
+        checkoutLink = checkout.checkoutLink;
+        savedOrderRef = checkout.orderReference;
+
+        subscription.nombaCheckoutOrderRef = savedOrderRef;
+        subscription.checkoutLink = checkoutLink;
+        await subscription.save();
+
+        invoice.nombaOrderReference = savedOrderRef;
+        await invoice.save();
+      } catch (error) {
+        logger.error(
+          {
+            subscriptionId: subscription._id,
+            error: error instanceof Error ? error.message : "Unknown",
+          },
+          "Failed to create Nomba checkout order (public)"
+        );
+      }
+    }
+
+    sendCreated(res, { subscriptionId: subscription._id, checkoutLink });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+/**
  * POST /subscriptions/:id/simulate-change
  * Preview a plan change (dry-run).
  */
@@ -408,6 +509,7 @@ export async function changeSubscriptionPlan(
       }
       const customer = await Customer.findById(subscription.customerId);
       const chargeResult = await nombaService.chargeTokenizedCard({
+        orderReference: `charge_${Date.now()}`,
         tokenKey: subscription.tokenKey,
         amount: result.amountDue,
         currency: newPlan.currency,
@@ -429,11 +531,10 @@ export async function changeSubscriptionPlan(
         subscriptionId: subscription._id,
         amount: result.amountDue,
         currency: newPlan.currency,
-        status: paymentStatus,
+        status: paymentStatus as any,
         nombaOrderReference: nombaOrderRef,
-        billingPeriodStart: changeDate,
-        billingPeriodEnd: subscription.currentPeriodEnd,
         isRenewal: false,
+        description: `Plan upgrade from ${subscription.planId} to ${newPlan._id}`,
       });
     }
 
