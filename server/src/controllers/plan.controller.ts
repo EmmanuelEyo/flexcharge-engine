@@ -179,7 +179,7 @@ export async function getPublicPlan(
 ): Promise<void> {
   try {
     const plan = await Plan.findOne({ _id: req.params.id, isActive: true })
-      .populate("tenantId", "businessName logoUrl"); // Only expose necessary tenant fields if needed
+      .populate("tenantId", "name"); // Only expose name as Tenant schema stores name, not businessName
 
     if (!plan) {
       throw new NotFoundError("Plan");
