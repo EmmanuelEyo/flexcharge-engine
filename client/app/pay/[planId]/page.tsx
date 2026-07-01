@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, use } from "react";
 import { API_BASE_URL } from "@/lib/constants";
 import Button from "@/components/ui/Button";
 
@@ -21,8 +21,11 @@ interface PublicPlan {
 export default function PayPage({
   params,
 }: {
-  params: { planId: string };
+  params: Promise<{ planId: string }>;
 }) {
+  const resolvedParams = use(params);
+  const planId = resolvedParams.planId;
+
   const [plan, setPlan] = useState<PublicPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -34,7 +37,7 @@ export default function PayPage({
   useEffect(() => {
     const fetchPlan = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/plans/public/${params.planId}`);
+        const res = await fetch(`${API_BASE_URL}/plans/public/${planId}`);
         const data = await res.json();
         
         if (!res.ok || !data.success) {
@@ -50,7 +53,7 @@ export default function PayPage({
     };
     
     fetchPlan();
-  }, [params.planId]);
+  }, [planId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +68,7 @@ export default function PayPage({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ planId: params.planId, email, name }),
+        body: JSON.stringify({ planId, email, name }),
       });
       
       const data = await res.json();
