@@ -65,6 +65,7 @@ app.use(helmet()); // Security headers
 
 const allowedOrigins = [
   "https://flexcharge-engine.vercel.app",
+  "https://flexcharge-engine.onrender.com",
   "http://localhost:3000",
 ];
 
