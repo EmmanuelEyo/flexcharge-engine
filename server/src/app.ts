@@ -60,6 +60,9 @@ import walletRoutes from "./routes/wallet.routes.js";
 
 const app = express();
 
+// Trust proxy (required for express-rate-limit behind Render reverse proxies)
+app.set("trust proxy", 1);
+
 // ===== SECURITY MIDDLEWARE =====
 app.use(helmet()); // Security headers
 
