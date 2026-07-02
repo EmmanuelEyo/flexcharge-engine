@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 interface NavItem {
   label: string;
@@ -79,7 +79,33 @@ export default function DashboardLayout({ children, }: {
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? sessionStorage.getItem("fc_token") : null;
+    if (!token) {
+      router.replace("/login");
+    } else {
+      setIsAuthenticated(true);
+    }
+  }, [router]);
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("fc_token");
+    sessionStorage.removeItem("fc_user");
+    router.push("/login");
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 antialiased">
@@ -123,8 +149,27 @@ export default function DashboardLayout({ children, }: {
             </span>
           </button>
 
-          <div className="w-8 h-8 rounded-full bg-indigo-100 overflow-hidden border border-slate-200 cursor-pointer hover:ring-2 hover:ring-indigo-300 transition-all flex items-center justify-center text-xs font-semibold text-indigo-700">
-            M
+          <div className="relative">
+            <div 
+              className="w-8 h-8 rounded-full bg-indigo-100 overflow-hidden border border-slate-200 cursor-pointer hover:ring-2 hover:ring-indigo-300 transition-all flex items-center justify-center text-xs font-semibold text-indigo-700 select-none"
+              onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+            >
+              M
+            </div>
+            {profileMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setProfileMenuOpen(false)} />
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-50 border border-slate-100">
+                  <button 
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">logout</span>
+                    Logout
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </header>
