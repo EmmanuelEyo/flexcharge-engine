@@ -1,5 +1,5 @@
 const getApiBaseUrl = () => {
-  let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+  let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:7000/api";
   url = url.replace(/\/$/, ""); // Remove trailing slash
   if (!url.endsWith("/api")) {
     url = `${url}/api`;
