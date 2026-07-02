@@ -33,7 +33,6 @@ const envSchema = z.object({
 
   // App
   API_BASE_URL: z.string().url().default("http://localhost:7000"),
-  FRONTEND_URL: z.string().url().default("http://localhost:3000"),
 
   // Nomba API (Sandbox)
   // Per AGENTS.md §1: Sandbox base URL and account IDs
