@@ -7,6 +7,7 @@ import { queueWebhook } from "./webhook.service.js";
 import { logger } from "../utils/logger.js";
 import { calculateNextBillingDate } from "./billing.service.js";
 import { classifyDeclineCode } from "../config/declineCodeMap.js";
+import { queueEmail } from "../utils/emailDispatcher.js";
 import type { PlanInterval } from "../types/subscription.types.js";
 
 /**
@@ -136,7 +137,7 @@ export async function processDunningRetry(
     return { success: false, error: `Subscription is ${subscription.status}` };
   }
 
-  if (!subscription.tokenKey) {
+  if (!subscription.tokenKey && attempt.retryStrategy !== "manual") {
     attempt.status = "skipped";
     attempt.failureReason = "No payment token on file";
     await attempt.save();
@@ -157,10 +158,83 @@ export async function processDunningRetry(
   attempt.executedAt = new Date();
 
   try {
+    // === MANUAL RENEWAL DUNNING ===
+    if (attempt.retryStrategy === "manual") {
+      // Send manual invoice reminder email
+      await queueEmail("customer", "manual_invoice_reminder", {
+        tenantId: subscription.tenantId,
+        customerId: customer._id,
+        subscriptionId: subscription._id,
+        invoiceId: invoice._id,
+      });
+
+      attempt.status = "failed";
+      attempt.failureReason = "Awaiting manual payment";
+      attempt.retryStrategy = "manual";
+
+      // Calculate next retry
+      const nextRetryDate = calculateNextRetryDate(
+        attempt.attemptNumber,
+        undefined
+      );
+      attempt.nextRetryAt = nextRetryDate || undefined;
+      await attempt.save();
+
+      if (!nextRetryDate || attempt.attemptNumber >= MAX_DUNNING_ATTEMPTS) {
+        // Max attempts reached — mark subscription unpaid
+        (subscription as any)._previousStatus = subscription.status;
+        subscription.status = "unpaid";
+        await subscription.save();
+
+        await queueWebhook(subscription.tenantId, "subscription.unpaid", {
+          subscriptionId: subscription._id,
+          invoiceId: invoice._id,
+          totalAttempts: attempt.attemptNumber,
+          finalDeclineCode: "manual_timeout",
+          finalDeclineCategory: "manual",
+        });
+
+        logger.error(
+          {
+            subscriptionId: subscription._id,
+            attempts: attempt.attemptNumber,
+          },
+          "Manual dunning exhausted — subscription marked unpaid"
+        );
+      } else {
+        // Schedule next retry
+        await DunningAttempt.create({
+          tenantId: subscription.tenantId,
+          subscriptionId: subscription._id,
+          invoiceId: invoice._id,
+          attemptNumber: attempt.attemptNumber + 1,
+          scheduledFor: nextRetryDate,
+          status: "scheduled",
+          nextRetryAt: nextRetryDate,
+          retryStrategy: "manual",
+        });
+
+        subscription.dunningAttemptCount = attempt.attemptNumber;
+        subscription.lastDunningAt = new Date();
+        await subscription.save();
+
+        logger.info(
+          {
+            subscriptionId: subscription._id,
+            nextAttempt: attempt.attemptNumber + 1,
+          },
+          "Manual dunning reminder sent — next attempt scheduled"
+        );
+      }
+
+      return { success: false, error: "Awaiting manual payment" };
+    }
+
+    // === AUTO RENEWAL DUNNING ===
     const orderReference = `retry_${invoice._id}_${attempt.attemptNumber}`;
 
     const chargeResult = await nombaService.chargeTokenizedCard({
-      tokenKey: subscription.tokenKey,
+      tokenKey: subscription.tokenKey!,
       orderReference,
       amount: plan.amount,
       currency: plan.currency || "NGN",

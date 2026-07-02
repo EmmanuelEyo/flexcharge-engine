@@ -7,6 +7,7 @@ import { defineTokenRefreshJob, TOKEN_REFRESH_JOB_NAME } from "../jobs/tokenRefr
 import { defineDailyBillingScanJob, DAILY_BILLING_SCAN_JOB_NAME } from "../jobs/dailyBillingScan.js";
 import { defineDunningRetryJob, DUNNING_RETRY_JOB_NAME } from "../jobs/dunningRetry.js";
 import { defineWalletAutoTopupJob, WALLET_AUTO_TOPUP_JOB_NAME } from "../jobs/walletAutoTopup.js";
+import { defineSendEmailJob } from "../jobs/sendEmail.js";
 
 /**
  * Agenda configuration — MongoDB-backed job scheduler.
@@ -37,6 +38,7 @@ export function getAgenda(): Agenda {
     defineDailyBillingScanJob(agenda);
     defineDunningRetryJob(agenda);
     defineWalletAutoTopupJob(agenda);
+    defineSendEmailJob(agenda);
 
     // Error handling
     agenda.on("error", (err) => {
