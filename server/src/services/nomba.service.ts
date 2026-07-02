@@ -74,13 +74,49 @@ interface NombaTransactionStatusResponse {
   };
 }
 
+export type NombaPaymentMethod =
+  | "Card"
+  | "Transfer"
+  | "Nomba QR"
+  | "USSD"
+  | "Buy Now Pay Later"
+  | "MOMO"
+  | "Intl Card"
+  | "Apple Pay";
+
+export interface NombaSplitItem {
+  /** The account whose wallet will be credited */
+  accountId: string;
+  /** Percentage or absolute amount to credit, depending on splitType */
+  value: string | number;
+}
+
+export interface NombaSplitRequest {
+  /** PERCENTAGE or AMOUNT — defaults to AMOUNT if omitted */
+  splitType?: "PERCENTAGE" | "AMOUNT";
+  splitList: NombaSplitItem[];
+}
+
 export interface CreateCheckoutParams {
   orderReference: string;
   amount: number;         // In KOBO — we convert to NGN string for Nomba
-  currency?: string;
+  currency?: "NGN" | "CDF" | "USD";
   customerEmail: string;
   callbackUrl: string;
   tokenizeCard?: boolean;
+  /** Optional: customer identifier */
+  customerId?: string;
+  /** Optional: sub-account where funds will be deposited */
+  accountId?: string;
+  /** Optional: restrict which payment methods appear on the checkout page */
+  allowedPaymentMethods?: NombaPaymentMethod[];
+  /** Optional: split the inflow across multiple accounts */
+  splitRequest?: NombaSplitRequest;
+  /**
+   * Optional: arbitrary key-value metadata attached to the order.
+   * Special key — set { region: "CD" } to route through DRC checkout.
+   */
+  orderMetaData?: Record<string, string>;
 }
 
 export interface ChargeTokenizedCardParams {
@@ -330,17 +366,42 @@ class NombaService {
     // while /v1/checkout/order works perfectly in sandbox when the base URL is sandbox.nomba.com
     const checkoutPath = "/v1/checkout/order";
 
+    // Build the order object — only include optional fields when provided
+    const orderPayload: Record<string, unknown> = {
+      orderReference: params.orderReference,
+      amount: amountInNaira,
+      currency: params.currency ?? "NGN",
+      customerEmail: params.customerEmail,
+      callbackUrl: params.callbackUrl,
+      // Use explicit customerId if given, otherwise fall back to orderReference
+      customerId: params.customerId ?? params.orderReference,
+    };
+
+    // Destination sub-account (where funds are deposited).
+    // Per Nomba rules: body accountId = sub-account (deposit destination), NOT the parent.
+    // The parent accountId is always in the Authorization header via getAuthHeaders().
+    // Default to NOMBA_SUB_ACCOUNT_ID so callers don't need to remember to pass it.
+    orderPayload.accountId = params.accountId ?? env.NOMBA_SUB_ACCOUNT_ID;
+
+    // Restrict which payment methods appear on the checkout page
+    if (params.allowedPaymentMethods && params.allowedPaymentMethods.length > 0) {
+      orderPayload.allowedPaymentMethods = params.allowedPaymentMethods;
+    }
+
+    // Split the inflow across multiple accounts
+    if (params.splitRequest) {
+      orderPayload.splitRequest = params.splitRequest;
+    }
+
+    // Arbitrary metadata (supports the special { region: "CD" } DRC key)
+    if (params.orderMetaData && Object.keys(params.orderMetaData).length > 0) {
+      orderPayload.orderMetaData = params.orderMetaData;
+    }
+
     const response = await this.client.post<NombaCheckoutOrderResponse>(
       checkoutPath,
       {
-        order: {
-          orderReference: params.orderReference,
-          customerId: params.orderReference, // Use order ref as customer identifier
-          amount: amountInNaira,
-          currency: params.currency || "NGN",
-          customerEmail: params.customerEmail,
-          callbackUrl: params.callbackUrl,
-        },
+        order: orderPayload,
         tokenizeCard: params.tokenizeCard ?? true,
       },
       { headers: authHeaders }
@@ -350,6 +411,9 @@ class NombaService {
       {
         orderReference: response.data.data.orderReference,
         path: checkoutPath,
+        hasMetaData: !!params.orderMetaData,
+        hasSplit: !!params.splitRequest,
+        paymentMethods: params.allowedPaymentMethods,
       },
       "Nomba checkout order created"
     );
@@ -396,7 +460,7 @@ class NombaService {
           currency: params.currency || "NGN",
           customerEmail: params.customerEmail,
           customerId: params.customerId || params.orderReference,
-          accountId: env.NOMBA_ACCOUNT_ID,
+          accountId: env.NOMBA_SUB_ACCOUNT_ID, // Body accountId = sub-account (deposit destination), NOT the parent
         },
       },
       { headers: authHeaders }

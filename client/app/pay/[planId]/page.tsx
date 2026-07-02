@@ -58,36 +58,42 @@ export default function PayPage({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    if (!email || !name) return;
 
     setProcessing(true);
     setError("");
 
     try {
+      // Build the success redirect URL dynamically so it works on any host
+      const returnUrl = `${window.location.origin}/pay/success`;
+
       const res = await fetch(`${API_BASE_URL}/subscriptions/public-checkout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ planId, email, name }),
+        body: JSON.stringify({ planId, email, name, returnUrl }),
       });
-      
+
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to initiate checkout");
+        throw new Error(data.error || data.message || "Failed to initiate checkout");
       }
 
-      if (data.data.checkoutLink) {
+      if (data.data?.checkoutLink) {
+        // Redirect the browser to the Nomba checkout page
         window.location.href = data.data.checkoutLink;
       } else {
-        throw new Error("No checkout link returned. Nomba integration might be disabled.");
+        throw new Error(
+          "No checkout link was returned by the server. Please ensure Nomba credentials are configured."
+        );
       }
-      
     } catch (err: any) {
       setError(err.message);
       setProcessing(false);
     }
   };
+
 
   if (loading) {
     return (

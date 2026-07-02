@@ -296,8 +296,15 @@ export async function publicCheckout(
       throw new AppError("planId, email, and name are required", 400);
     }
 
+    // Accept either a MongoDB ObjectId or a slug (e.g. "plan_pro_001")
+    const { Types } = await import("mongoose");
+    const isObjectId = Types.ObjectId.isValid(planId) && planId.length === 24;
+    const planQuery = isObjectId
+      ? { _id: planId, isActive: true }
+      : { slug: planId, isActive: true };
+
     // Find the plan to get the tenantId
-    const plan = await Plan.findOne({ _id: planId, isActive: true });
+    const plan = await Plan.findOne(planQuery);
     if (!plan) {
       throw new NotFoundError("Plan");
     }

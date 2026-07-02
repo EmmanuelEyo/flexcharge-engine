@@ -12,6 +12,7 @@ export interface Plan {
   subscribers: number;
   status: "active" | "inactive";
   createdAt: string;
+  slug?: string;
 }
 
 interface PlanCardProps {
