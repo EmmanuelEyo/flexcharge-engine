@@ -104,7 +104,7 @@ app.use("/api", apiLimiter);
 
 // ===== REQUEST LOGGING =====
 app.use((req, _res, next) => {
-  logger.debug(
+  logger.info(
     { method: req.method, url: req.url },
     "Incoming request"
   );

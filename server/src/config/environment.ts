@@ -47,7 +47,7 @@ const envSchema = z.object({
 
   // Resend Email (optional — email notifications are disabled when not set)
   RESEND_API_KEY: z.string().optional().default(""),
-  EMAIL_FROM: z.string().optional().default("FlexCharge <onboarding@resend.dev>"),
+  EMAIL_FROM: z.string().optional().default("FlexCharge <no-reply@loopdevs.int.yt>"),
 });
 
 const parsed = envSchema.safeParse(process.env);
