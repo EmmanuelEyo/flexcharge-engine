@@ -27,6 +27,9 @@ export interface ISubscription extends Document {
   // === STATE MACHINE ===
   status: SubscriptionStatus;
 
+  // === RENEWAL MODE ===
+  renewalMode: "auto" | "manual";
+
   // === NOMBA TOKEN (populated after successful checkout) ===
   tokenKey?: string;
   cardLast4?: string;
@@ -99,6 +102,13 @@ const subscriptionSchema = new Schema<ISubscription>(
         message: "Status must be one of: pending, trialing, active, past_due, canceled, unpaid, paused",
       },
       default: "pending",
+    },
+
+    // === RENEWAL MODE ===
+    renewalMode: {
+      type: String,
+      enum: ["auto", "manual"],
+      default: "auto",
     },
 
     // === NOMBA TOKEN ===
