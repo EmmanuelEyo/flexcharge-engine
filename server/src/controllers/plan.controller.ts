@@ -166,3 +166,27 @@ export async function deletePlan(
     next(error);
   }
 }
+
+/**
+ * GET /plans/public/:id
+ * Retrieve a single plan for public checkout pages.
+ * Does not require tenantId scoping as it's public.
+ */
+export async function getPublicPlan(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const plan = await Plan.findOne({ _id: req.params.id, isActive: true })
+      .populate("tenantId", "name"); // Only expose name as Tenant schema stores name, not businessName
+
+    if (!plan) {
+      throw new NotFoundError("Plan");
+    }
+
+    sendSuccess(res, plan);
+  } catch (error) {
+    next(error);
+  }
+}

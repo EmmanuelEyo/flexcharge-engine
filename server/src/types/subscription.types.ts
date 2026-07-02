@@ -81,9 +81,14 @@ export const WEBHOOK_EVENTS = [
   "subscription.past_due",
   "subscription.canceled",
   "subscription.unpaid",
+  "subscription.paused",
+  "subscription.resumed",
   "invoice.paid",
   "invoice.failed",
   "customer.created",
+  "wallet.credited",
+  "wallet.debited",
+  "wallet.low_balance",
 ] as const;
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];

@@ -43,6 +43,7 @@ export const createPlanSchema = z.object({
     .min(0, "Trial days cannot be negative")
     .default(0),
   features: z.array(z.string().trim()).default([]),
+  creditsPerCycle: z.number().int().nonnegative().optional(),
 });
 
 export const updatePlanSchema = z.object({
@@ -68,6 +69,7 @@ export const updatePlanSchema = z.object({
     .min(0)
     .optional(),
   features: z.array(z.string().trim()).optional(),
+  creditsPerCycle: z.number().int().nonnegative().optional(),
   isActive: z.boolean().optional(),
 });
 

@@ -33,6 +33,17 @@ const envSchema = z.object({
 
   // App
   API_BASE_URL: z.string().url().default("http://localhost:7000"),
+  FRONTEND_URL: z.string().url().default("http://localhost:3000"),
+
+  // Nomba API (Sandbox)
+  // Per AGENTS.md §1: Sandbox base URL and account IDs
+  // Per AGENTS.md §2: Token lifecycle management
+  NOMBA_BASE_URL: z.string().url().default("https://sandbox.nomba.com"),
+  NOMBA_CLIENT_ID: z.string().default(""),
+  NOMBA_CLIENT_SECRET: z.string().default(""),
+  NOMBA_ACCOUNT_ID: z.string().default("f666ef9b-888e-4799-85ce-acb505b28023"),
+  NOMBA_SUB_ACCOUNT_ID: z.string().default("5102a72b-3dac-42d0-a549-3094ad0c36ea"),
+  NOMBA_WEBHOOK_SECRET: z.string().optional().default("NombaHackathon2026"),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -1,0 +1,248 @@
+import test from "node:test";
+import assert from "node:assert";
+import mongoose, { Types } from "mongoose";
+import { setupTestDB, teardownTestDB, clearTestDB } from "./setup.js";
+import { Tenant } from "../models/Tenant.js";
+import { Customer } from "../models/Customer.js";
+import { Plan } from "../models/Plan.js";
+import { Subscription } from "../models/Subscription.js";
+import { Invoice } from "../models/Invoice.js";
+import { DunningAttempt } from "../models/DunningAttempt.js";
+import {
+  calculateNextBillingDate,
+  findDueSubscriptions,
+  processRenewal,
+} from "../services/billing.service.js";
+import { nombaService } from "../services/nomba.service.js";
+
+const originalChargeTokenizedCard = nombaService.chargeTokenizedCard;
+
+async function seedRenewalFixture() {
+  const tenant = await Tenant.create({
+    name: "Billing Tenant",
+    email: `billing-${Date.now()}@example.com`,
+    passwordHash: "hashed-password",
+    webhookSecret: "billing-secret",
+  });
+
+  const customer = await Customer.create({
+    tenantId: tenant._id,
+    email: `customer-${Date.now()}@example.com`,
+    name: "Billing Customer",
+  });
+
+  const plan = await Plan.create({
+    tenantId: tenant._id,
+    name: "Pro Monthly",
+    slug: `pro-monthly-${Date.now()}`,
+    amount: 500000,
+    currency: "NGN",
+    interval: "monthly",
+    features: ["Billing"],
+  });
+
+  const currentPeriodStart = new Date("2026-06-01T00:00:00.000Z");
+  const currentPeriodEnd = new Date("2026-07-01T00:00:00.000Z");
+
+  const subscription = await Subscription.create({
+    tenantId: tenant._id,
+    customerId: customer._id,
+    planId: plan._id,
+    status: "active",
+    tokenKey: "tok_billing_123",
+    cardLast4: "4242",
+    cardBrand: "VISA",
+    currentPeriodStart,
+    currentPeriodEnd,
+    nextBillingDate: currentPeriodEnd,
+    dunningAttemptCount: 0,
+  });
+
+  return { tenant, customer, plan, subscription, currentPeriodStart, currentPeriodEnd };
+}
+
+test("Billing Service", async (t) => {
+  await setupTestDB();
+
+  t.beforeEach(async () => {
+    await clearTestDB();
+    nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
+  });
+
+  t.after(async () => {
+    nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
+    await teardownTestDB();
+  });
+
+  await t.test("calculates the next billing date for common intervals", () => {
+    console.log("[BILLING][TEST] calculating next billing dates");
+
+    const baseDate = new Date("2026-07-01T00:00:00.000Z");
+
+    assert.strictEqual(
+      calculateNextBillingDate(baseDate, "monthly").toISOString(),
+      "2026-07-31T00:00:00.000Z"
+    );
+    assert.strictEqual(
+      calculateNextBillingDate(baseDate, "yearly").toISOString(),
+      "2027-07-01T00:00:00.000Z"
+    );
+  });
+
+  await t.test("finds only due active subscriptions", async () => {
+    console.log("[BILLING][TEST] locating due subscriptions");
+
+    const { tenant, customer, plan, subscription } = await seedRenewalFixture();
+
+    subscription.nextBillingDate = new Date(Date.now() - 60 * 1000);
+    await subscription.save();
+
+    await Subscription.create({
+      tenantId: tenant._id,
+      customerId: customer._id,
+      planId: plan._id,
+      status: "active",
+      tokenKey: "tok_future",
+      currentPeriodEnd: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      nextBillingDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+
+    await Subscription.create({
+      tenantId: tenant._id,
+      customerId: customer._id,
+      planId: plan._id,
+      status: "canceled",
+      tokenKey: "tok_cancelled",
+      currentPeriodEnd: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      nextBillingDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    });
+
+    const due = await findDueSubscriptions();
+
+    assert.strictEqual(due.length, 1);
+    assert.strictEqual(due[0]!._id.toString(), subscription._id.toString());
+    assert.strictEqual((due[0]!.planId as any).name, "Pro Monthly");
+    assert.strictEqual((due[0]!.customerId as any).email, customer.email);
+  });
+
+  await t.test("processes a successful renewal and advances the billing cycle", async () => {
+    console.log("[BILLING][TEST] processing renewal success path");
+
+    const { subscription, plan, currentPeriodEnd } = await seedRenewalFixture();
+    const chargeCalls: any[] = [];
+
+    nombaService.chargeTokenizedCard = (async (params: any) => {
+      chargeCalls.push(params);
+      return {
+        status: "SUCCESS",
+        transactionId: "txn_success_123",
+      };
+    }) as any;
+
+    try {
+      const result = await processRenewal(subscription._id as Types.ObjectId);
+
+      assert.strictEqual(result.success, true);
+      assert.ok(result.invoiceId);
+      assert.strictEqual(chargeCalls.length, 1);
+
+      const invoice = await Invoice.findById(result.invoiceId);
+      assert.ok(invoice);
+      assert.strictEqual(invoice?.status, "paid");
+      assert.strictEqual(invoice?.nombaTransactionId, "txn_success_123");
+
+      const updated = await Subscription.findById(subscription._id);
+      assert.ok(updated);
+      assert.strictEqual(updated?.status, "active");
+      assert.strictEqual(updated?.dunningAttemptCount, 0);
+      assert.strictEqual(
+        updated?.currentPeriodStart?.toISOString(),
+        currentPeriodEnd.toISOString()
+      );
+      assert.strictEqual(
+        updated?.currentPeriodEnd?.toISOString(),
+        calculateNextBillingDate(currentPeriodEnd, plan.interval).toISOString()
+      );
+      assert.strictEqual(
+        updated?.nextBillingDate?.toISOString(),
+        calculateNextBillingDate(currentPeriodEnd, plan.interval).toISOString()
+      );
+    } finally {
+      nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
+    }
+  });
+
+  await t.test("skips duplicate renewal attempts using the invoice idempotency key", async () => {
+    console.log("[BILLING][TEST] checking renewal idempotency");
+
+    const { subscription, currentPeriodEnd } = await seedRenewalFixture();
+    const idempotencyKey = `bill_${subscription._id}_${currentPeriodEnd.toISOString().split("T")[0]}`;
+
+    await Invoice.create({
+      tenantId: subscription.tenantId,
+      subscriptionId: subscription._id,
+      customerId: subscription.customerId,
+      amount: 500000,
+      currency: "NGN",
+      status: "paid",
+      nombaOrderReference: `existing_${subscription._id}`,
+      description: "Existing billed invoice",
+      isRenewal: true,
+      idempotencyKey,
+    });
+
+    let chargeCount = 0;
+    nombaService.chargeTokenizedCard = (async () => {
+      chargeCount += 1;
+      return { status: "SUCCESS", transactionId: "txn_should_not_run" };
+    }) as any;
+
+    try {
+      const result = await processRenewal(subscription._id as Types.ObjectId);
+
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.error, "Already billed for this period");
+      assert.strictEqual(chargeCount, 0);
+
+      const invoices = await Invoice.find({ subscriptionId: subscription._id });
+      assert.strictEqual(invoices.length, 1);
+    } finally {
+      nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
+    }
+  });
+
+  await t.test("moves failed renewals into dunning", async () => {
+    console.log("[BILLING][TEST] processing renewal failure path");
+
+    const { subscription } = await seedRenewalFixture();
+
+    nombaService.chargeTokenizedCard = (async () => ({
+      status: "FAILED",
+      declineCode: "51",
+      message: "Insufficient funds",
+    })) as any;
+
+    try {
+      const result = await processRenewal(subscription._id as Types.ObjectId);
+
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.error, "Insufficient funds");
+
+      const updated = await Subscription.findById(subscription._id);
+      const invoice = await Invoice.findOne({ subscriptionId: subscription._id });
+      const attempt = await DunningAttempt.findOne({ subscriptionId: subscription._id });
+
+      assert.ok(updated);
+      assert.strictEqual(updated?.status, "past_due");
+      assert.strictEqual(updated?.dunningAttemptCount, 1);
+      assert.ok(invoice);
+      assert.strictEqual(invoice?.status, "failed");
+      assert.ok(attempt);
+      assert.strictEqual(attempt?.attemptNumber, 1);
+      assert.strictEqual(attempt?.status, "scheduled");
+      assert.ok(attempt?.nextRetryAt);
+    } finally {
+      nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
+    }
+  });
+});

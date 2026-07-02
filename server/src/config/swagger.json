@@ -16,18 +16,34 @@
       "post": {
         "summary": "Register a new Tenant",
         "description": "Create a new tenant (downstream business team) account.",
-        "tags": ["Authentication"],
+        "tags": [
+          "Authentication"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name", "email", "password"],
+                "required": [
+                  "name",
+                  "email",
+                  "password"
+                ],
                 "properties": {
-                  "name": { "type": "string", "example": "Acme Corp" },
-                  "email": { "type": "string", "format": "email", "example": "admin@acme.com" },
-                  "password": { "type": "string", "example": "SecurePassword123" }
+                  "name": {
+                    "type": "string",
+                    "example": "Acme Corp"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "admin@acme.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "SecurePassword123"
+                  }
                 }
               }
             }
@@ -41,19 +57,34 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean", "example": true },
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
                     "data": {
                       "type": "object",
                       "properties": {
                         "tenant": {
                           "type": "object",
                           "properties": {
-                            "id": { "type": "string", "example": "651a2b3c4d5e6f7a8b9c0d1e" },
-                            "name": { "type": "string", "example": "Acme Corp" },
-                            "email": { "type": "string", "example": "admin@acme.com" }
+                            "id": {
+                              "type": "string",
+                              "example": "651a2b3c4d5e6f7a8b9c0d1e"
+                            },
+                            "name": {
+                              "type": "string",
+                              "example": "Acme Corp"
+                            },
+                            "email": {
+                              "type": "string",
+                              "example": "admin@acme.com"
+                            }
                           }
                         },
-                        "token": { "type": "string", "example": "eyJhbGciOiJIUzI1NiIsIn..." }
+                        "token": {
+                          "type": "string",
+                          "example": "eyJhbGciOiJIUzI1NiIsIn..."
+                        }
                       }
                     }
                   }
@@ -68,17 +99,29 @@
       "post": {
         "summary": "Tenant Login",
         "description": "Authenticate tenant credentials and return a JWT session token.",
-        "tags": ["Authentication"],
+        "tags": [
+          "Authentication"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["email", "password"],
+                "required": [
+                  "email",
+                  "password"
+                ],
                 "properties": {
-                  "email": { "type": "string", "format": "email", "example": "admin@acme.com" },
-                  "password": { "type": "string", "example": "SecurePassword123" }
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "admin@acme.com"
+                  },
+                  "password": {
+                    "type": "string",
+                    "example": "SecurePassword123"
+                  }
                 }
               }
             }
@@ -92,12 +135,20 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean", "example": true },
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
                     "data": {
                       "type": "object",
                       "properties": {
-                        "tenant": { "type": "object" },
-                        "token": { "type": "string", "example": "eyJhbGciOiJIUzI1NiIsIn..." }
+                        "tenant": {
+                          "type": "object"
+                        },
+                        "token": {
+                          "type": "string",
+                          "example": "eyJhbGciOiJIUzI1NiIsIn..."
+                        }
                       }
                     }
                   }
@@ -112,8 +163,14 @@
       "get": {
         "summary": "Get Current Tenant",
         "description": "Retrieves the currently authenticated tenant's profile. Used by the frontend to hydrate state on page reload.",
-        "tags": ["Authentication"],
-        "security": [{ "bearerAuth": [] }],
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Tenant profile retrieved successfully",
@@ -122,8 +179,13 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean", "example": true },
-                    "data": { "type": "object" }
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object"
+                    }
                   }
                 }
               }
@@ -136,25 +198,42 @@
       "post": {
         "summary": "Change Password",
         "description": "Allows an authenticated tenant to change their password.",
-        "tags": ["Authentication"],
-        "security": [{ "bearerAuth": [] }],
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["currentPassword", "newPassword"],
+                "required": [
+                  "currentPassword",
+                  "newPassword"
+                ],
                 "properties": {
-                  "currentPassword": { "type": "string", "example": "OldSecurePassword123" },
-                  "newPassword": { "type": "string", "example": "NewSecurePassword456" }
+                  "currentPassword": {
+                    "type": "string",
+                    "example": "OldSecurePassword123"
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "example": "NewSecurePassword456"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Password changed successfully" }
+          "200": {
+            "description": "Password changed successfully"
+          }
         }
       }
     },
@@ -162,23 +241,33 @@
       "post": {
         "summary": "Request Password Reset",
         "description": "Generates a reset token and sends a reset link to the tenant's email.",
-        "tags": ["Authentication"],
+        "tags": [
+          "Authentication"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["email"],
+                "required": [
+                  "email"
+                ],
                 "properties": {
-                  "email": { "type": "string", "format": "email", "example": "admin@acme.com" }
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "admin@acme.com"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Reset link sent (if email is registered)" }
+          "200": {
+            "description": "Reset link sent (if email is registered)"
+          }
         }
       }
     },
@@ -186,24 +275,37 @@
       "post": {
         "summary": "Reset Password",
         "description": "Sets a new password using a valid reset token.",
-        "tags": ["Authentication"],
+        "tags": [
+          "Authentication"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["token", "newPassword"],
+                "required": [
+                  "token",
+                  "newPassword"
+                ],
                 "properties": {
-                  "token": { "type": "string", "example": "abc123xyz" },
-                  "newPassword": { "type": "string", "example": "NewSecurePassword456" }
+                  "token": {
+                    "type": "string",
+                    "example": "abc123xyz"
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "example": "NewSecurePassword456"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Password reset successfully" }
+          "200": {
+            "description": "Password reset successfully"
+          }
         }
       }
     },
@@ -211,26 +313,45 @@
       "get": {
         "summary": "List API Keys",
         "description": "List all active API keys issued to this tenant. Never returns raw keys.",
-        "tags": ["API Keys"],
-        "security": [{ "bearerAuth": [] }],
+        "tags": [
+          "API Keys"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
-          "200": { "description": "List of API keys retrieved" }
+          "200": {
+            "description": "List of API keys retrieved"
+          }
         }
       },
       "post": {
         "summary": "Create API Key",
         "description": "Generate a new API key. The raw key is returned ONLY once in the response.",
-        "tags": ["API Keys"],
-        "security": [{ "bearerAuth": [] }],
+        "tags": [
+          "API Keys"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name"],
+                "required": [
+                  "name"
+                ],
                 "properties": {
-                  "name": { "type": "string", "example": "Production API Key" }
+                  "name": {
+                    "type": "string",
+                    "example": "Production API Key"
+                  }
                 }
               }
             }
@@ -244,12 +365,20 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean", "example": true },
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
                     "data": {
                       "type": "object",
                       "properties": {
-                        "apiKey": { "type": "object" },
-                        "rawKey": { "type": "string", "example": "fl_live_abcdef123456789..." }
+                        "apiKey": {
+                          "type": "object"
+                        },
+                        "rawKey": {
+                          "type": "string",
+                          "example": "fl_live_abcdef123456789..."
+                        }
                       }
                     }
                   }
@@ -264,18 +393,28 @@
       "delete": {
         "summary": "Revoke API Key",
         "description": "Revoke programmatic access for an API key by ID.",
-        "tags": ["API Keys"],
-        "security": [{ "bearerAuth": [] }],
+        "tags": [
+          "API Keys"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
-          "200": { "description": "API Key revoked" }
+          "200": {
+            "description": "API Key revoked"
+          }
         }
       }
     },
@@ -283,24 +422,38 @@
       "patch": {
         "summary": "Update Webhook Destination URL",
         "description": "Update the webhook URL where the engine dispatches subscription and payment event webhooks.",
-        "tags": ["Webhooks"],
-        "security": [{ "bearerAuth": [] }],
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["webhookUrl"],
+                "required": [
+                  "webhookUrl"
+                ],
                 "properties": {
-                  "webhookUrl": { "type": "string", "format": "uri", "example": "https://api.mybusiness.com/webhooks" }
+                  "webhookUrl": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://api.mybusiness.com/webhooks"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Webhook configuration updated" }
+          "200": {
+            "description": "Webhook configuration updated"
+          }
         }
       }
     },
@@ -308,10 +461,18 @@
       "get": {
         "summary": "Retrieve Webhook Signing Secret",
         "description": "Retrieve the webhook signing secret for verifying signatures on event dispatches.",
-        "tags": ["Webhooks"],
-        "security": [{ "bearerAuth": [] }],
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
-          "200": { "description": "Webhook secret retrieved" }
+          "200": {
+            "description": "Webhook secret retrieved"
+          }
         }
       }
     },
@@ -319,56 +480,152 @@
       "get": {
         "summary": "List Plans",
         "description": "Retrieve all plans belonging to this tenant.",
-        "tags": ["Plans"],
-        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "tags": [
+          "Plans"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
-          "200": { "description": "List of plans" }
+          "200": {
+            "description": "List of plans"
+          }
         }
       },
       "post": {
         "summary": "Create Plan",
         "description": "Create a new subscription plan. Plan amounts should be stored in Kobo (e.g. ₦1,000 = 100000).",
-        "tags": ["Plans"],
-        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "tags": [
+          "Plans"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name", "amount", "interval"],
+                "required": [
+                  "name",
+                  "amount",
+                  "interval"
+                ],
                 "properties": {
-                  "name": { "type": "string", "example": "Pro Monthly Plan" },
-                  "amount": { "type": "integer", "example": 500000 },
-                  "currency": { "type": "string", "default": "NGN", "example": "NGN" },
-                  "interval": { "type": "string", "enum": ["weekly", "monthly", "quarterly", "yearly"], "example": "monthly" },
-                  "trialDays": { "type": "integer", "default": 0, "example": 7 },
-                  "features": { "type": "array", "items": { "type": "string" }, "example": ["Uncapped features", "Priority Support"] }
+                  "name": {
+                    "type": "string",
+                    "example": "Pro Monthly Plan"
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "example": 500000
+                  },
+                  "currency": {
+                    "type": "string",
+                    "default": "NGN",
+                    "example": "NGN"
+                  },
+                  "interval": {
+                    "type": "string",
+                    "enum": [
+                      "weekly",
+                      "monthly",
+                      "quarterly",
+                      "yearly"
+                    ],
+                    "example": "monthly"
+                  },
+                  "trialDays": {
+                    "type": "integer",
+                    "default": 0,
+                    "example": 7
+                  },
+                  "features": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "Uncapped features",
+                      "Priority Support"
+                    ]
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Plan created successfully" }
+          "201": {
+            "description": "Plan created successfully"
+          }
         }
       }
     },
     "/plans/{id}": {
       "get": {
         "summary": "Get Plan Details",
-        "tags": ["Plans"],
-        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "tags": [
+          "Plans"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Plan details retrieved" }
+          "200": {
+            "description": "Plan details retrieved"
+          }
         }
       },
       "patch": {
         "summary": "Update Plan",
-        "tags": ["Plans"],
-        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "tags": [
+          "Plans"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -376,26 +633,59 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "name": { "type": "string" },
-                  "amount": { "type": "integer" },
-                  "features": { "type": "array", "items": { "type": "string" } },
-                  "isActive": { "type": "boolean" }
+                  "name": {
+                    "type": "string"
+                  },
+                  "amount": {
+                    "type": "integer"
+                  },
+                  "features": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Plan updated" }
+          "200": {
+            "description": "Plan updated"
+          }
         }
       },
       "delete": {
         "summary": "Delete Plan (Soft Delete)",
-        "tags": ["Plans"],
-        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "tags": [
+          "Plans"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Plan soft-deleted (deactivated)" }
+          "200": {
+            "description": "Plan soft-deleted (deactivated)"
+          }
         }
       }
     },
@@ -403,58 +693,149 @@
       "get": {
         "summary": "List Customers",
         "description": "List customers belonging to the tenant. Supports pagination parameters.",
-        "tags": ["Customers"],
-        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "page", "in": "query", "schema": { "type": "string", "default": "1" } },
-          { "name": "limit", "in": "query", "schema": { "type": "string", "default": "20" } }
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "1"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "20"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "List of customers" }
+          "200": {
+            "description": "List of customers"
+          }
         }
       },
       "post": {
         "summary": "Create Customer",
         "description": "Add a new customer under the tenant.",
-        "tags": ["Customers"],
-        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["email"],
+                "required": [
+                  "email"
+                ],
                 "properties": {
-                  "email": { "type": "string", "format": "email", "example": "customer@acme.com" },
-                  "name": { "type": "string", "example": "John Doe" },
-                  "phone": { "type": "string", "example": "+2348012345678" },
-                  "metadata": { "type": "object", "example": { "company": "Acme Partner" } }
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "customer@acme.com"
+                  },
+                  "name": {
+                    "type": "string",
+                    "example": "John Doe"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "example": "+2348012345678"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "example": {
+                      "company": "Acme Partner"
+                    }
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Customer registered" }
+          "201": {
+            "description": "Customer registered"
+          }
         }
       }
     },
     "/customers/{id}": {
       "get": {
         "summary": "Get Customer Details",
-        "tags": ["Customers"],
-        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Customer details retrieved" }
+          "200": {
+            "description": "Customer details retrieved"
+          }
         }
       },
       "patch": {
         "summary": "Update Customer",
-        "tags": ["Customers"],
-        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "tags": [
+          "Customers"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -462,16 +843,24 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "name": { "type": "string" },
-                  "phone": { "type": "string" },
-                  "metadata": { "type": "object" }
+                  "name": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Customer updated" }
+          "200": {
+            "description": "Customer updated"
+          }
         }
       }
     },
@@ -479,17 +868,31 @@
       "post": {
         "summary": "Create Portal Session",
         "description": "Generate a short-lived customer portal JWT token. Called by the Tenant.",
-        "tags": ["Customer Portal"],
-        "security": [{ "apiKeyAuth": [] }, { "bearerAuth": [] }],
+        "tags": [
+          "Customer Portal"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["customerId"],
+                "required": [
+                  "customerId"
+                ],
                 "properties": {
-                  "customerId": { "type": "string", "example": "651a2b3c4d5e6f7a8b9c0d1e" }
+                  "customerId": {
+                    "type": "string",
+                    "example": "651a2b3c4d5e6f7a8b9c0d1e"
+                  }
                 }
               }
             }
@@ -503,12 +906,19 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": { "type": "boolean", "example": true },
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
                     "data": {
                       "type": "object",
                       "properties": {
-                        "portalToken": { "type": "string" },
-                        "portalUrl": { "type": "string" }
+                        "portalToken": {
+                          "type": "string"
+                        },
+                        "portalUrl": {
+                          "type": "string"
+                        }
                       }
                     }
                   }
@@ -523,10 +933,1355 @@
       "get": {
         "summary": "Get Customer Profile (Portal)",
         "description": "Retrieve customer details. Authenticated using the customer's short-lived Portal JWT.",
-        "tags": ["Customer Portal"],
-        "security": [{ "portalAuth": [] }],
+        "tags": [
+          "Customer Portal"
+        ],
+        "security": [
+          {
+            "portalAuth": []
+          }
+        ],
         "responses": {
-          "200": { "description": "Customer profile retrieved" }
+          "200": {
+            "description": "Customer profile retrieved"
+          }
+        }
+      }
+    },
+    "/invoices": {
+      "get": {
+        "summary": "List Invoices",
+        "description": "Retrieve all invoices belonging to the tenant. Supports filtering by status, customerId, or subscriptionId.",
+        "tags": [
+          "Invoices"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by invoice status (pending, paid, failed)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "description": "Filter by Customer ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subscriptionId",
+            "in": "query",
+            "description": "Filter by Subscription ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of invoices retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Invoice"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invoices/{id}": {
+      "get": {
+        "summary": "Get Invoice Details",
+        "description": "Retrieve details of a specific invoice by ID.",
+        "tags": [
+          "Invoices"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invoice details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Invoice"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invoice not found"
+          }
+        }
+      }
+    },
+    "/subscriptions": {
+      "get": {
+        "summary": "List Subscriptions",
+        "description": "Retrieve all subscriptions belonging to the tenant. Optionally filter by status or customerId.",
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by subscription status (pending, active, past_due, canceled, unpaid)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "customerId",
+            "in": "query",
+            "description": "Filter by Customer ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of subscriptions retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Subscription"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Subscription",
+        "description": "Create a new subscription for a customer and generate a Nomba checkout link for authorization.",
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "customerId",
+                  "planId"
+                ],
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "example": "651a2b3c4d5e6f7a8b9c0d1e"
+                  },
+                  "planId": {
+                    "type": "string",
+                    "example": "651a2b3c4d5e6f7a8b9c0d1f"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "example": {
+                      "referral": "ad-campaign"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Subscription created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "subscriptionId": {
+                          "type": "string",
+                          "example": "651a2b3c4d5e6f7a8b9c0d20"
+                        },
+                        "checkoutLink": {
+                          "type": "string",
+                          "example": "https://pay.nomba.com/sandbox/QMojVVIswaIri..."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}": {
+      "get": {
+        "summary": "Get Subscription Details",
+        "description": "Retrieve details of a specific subscription by ID.",
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subscription details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Subscription"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Subscription not found"
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}/cancel": {
+      "post": {
+        "summary": "Cancel Subscription",
+        "description": "Cancel an active subscription. Supports graceful cancellation at the end of the current billing cycle or immediate cancellation.",
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cancelAtPeriodEnd": {
+                    "type": "boolean",
+                    "default": true,
+                    "example": true
+                  },
+                  "cancellationReason": {
+                    "type": "string",
+                    "example": "User requested cancellation"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Subscription cancellation scheduled or processed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Subscription cancelled successfully"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}/simulate-change": {
+      "post": {
+        "summary": "Simulate Plan Change",
+        "description": "Preview a plan change (dry-run). Returns proration line items and credits.",
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Subscription ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "newPlanId"
+                ],
+                "properties": {
+                  "newPlanId": {
+                    "type": "string"
+                  },
+                  "changeDate": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Simulation payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "simulation": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "warning": {
+                          "type": "string",
+                          "example": "This is a preview. No charges have been made."
+                        },
+                        "subscription": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "example": "6a4528280b5c8adf78216501"
+                            },
+                            "currentPlanId": {
+                              "type": "string",
+                              "example": "6a4526ae21f3256568c3d5c2"
+                            },
+                            "currentPlanName": {
+                              "type": "string",
+                              "example": "Pro Monthly Plan"
+                            },
+                            "newPlanId": {
+                              "type": "string",
+                              "example": "6a4526ae21f3256568c3d5c5"
+                            },
+                            "newPlanName": {
+                              "type": "string",
+                              "example": "Enterprise Monthly Plan"
+                            }
+                          }
+                        },
+                        "proration": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "upgrade",
+                                "downgrade"
+                              ],
+                              "example": "upgrade"
+                            },
+                            "changeDate": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-07-02T07:45:00.000Z"
+                            },
+                            "currentPeriod": {
+                              "type": "object",
+                              "properties": {
+                                "start": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "example": "2026-07-01T00:00:00.000Z"
+                                },
+                                "end": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "example": "2026-08-01T00:00:00.000Z"
+                                }
+                              }
+                            },
+                            "totalDaysInPeriod": {
+                              "type": "integer",
+                              "example": 31
+                            },
+                            "daysRemaining": {
+                              "type": "integer",
+                              "example": 30
+                            },
+                            "unusedCredit": {
+                              "type": "integer",
+                              "example": 483870
+                            },
+                            "newPlanCostRemaining": {
+                              "type": "integer",
+                              "example": 967741
+                            }
+                          }
+                        },
+                        "invoice": {
+                          "type": "object",
+                          "properties": {
+                            "subtotal": {
+                              "type": "integer",
+                              "example": 483871
+                            },
+                            "subtotalFormatted": {
+                              "type": "string",
+                              "example": "₦4,838.71"
+                            },
+                            "amountDue": {
+                              "type": "integer",
+                              "example": 483871
+                            },
+                            "amountDueFormatted": {
+                              "type": "string",
+                              "example": "₦4,838.71"
+                            },
+                            "credit": {
+                              "type": "integer",
+                              "example": 483870
+                            },
+                            "creditFormatted": {
+                              "type": "string",
+                              "example": "₦4,838.70"
+                            },
+                            "currency": {
+                              "type": "string",
+                              "example": "NGN"
+                            }
+                          }
+                        },
+                        "nextBillingDate": {
+                          "type": "string",
+                          "format": "date-time",
+                          "example": "2026-08-01T00:00:00.000Z"
+                        },
+                        "nextBillingAmount": {
+                          "type": "integer",
+                          "example": 1000000
+                        },
+                        "nextBillingAmountFormatted": {
+                          "type": "string",
+                          "example": "₦10,000.00"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}/change-plan": {
+      "post": {
+        "summary": "Change Subscription Plan",
+        "description": "Execute a plan upgrade or downgrade, calculate proration, and charge/credit.",
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Subscription ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "newPlanId"
+                ],
+                "properties": {
+                  "newPlanId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Plan changed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "subscription": {
+                          "type": "object",
+                          "properties": {
+                            "_id": {
+                              "type": "string",
+                              "example": "6a4528280b5c8adf78216501"
+                            },
+                            "tenantId": {
+                              "type": "string",
+                              "example": "6a3bce3ef26b81436b51b0a3"
+                            },
+                            "customerId": {
+                              "type": "string",
+                              "example": "6a4526d521f3256568c3d5c3"
+                            },
+                            "planId": {
+                              "type": "string",
+                              "example": "6a4526ae21f3256568c3d5c5"
+                            },
+                            "status": {
+                              "type": "string",
+                              "example": "active"
+                            },
+                            "cancelAtPeriodEnd": {
+                              "type": "boolean",
+                              "example": false
+                            },
+                            "currentPeriodStart": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-07-01T14:46:00.419Z"
+                            },
+                            "currentPeriodEnd": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-08-01T14:46:00.419Z"
+                            },
+                            "tokenKey": {
+                              "type": "string",
+                              "example": "token_key_here"
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-07-01T14:46:00.419Z"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-07-02T07:46:00.000Z"
+                            }
+                          }
+                        },
+                        "invoice": {
+                          "type": "object",
+                          "properties": {
+                            "_id": {
+                              "type": "string",
+                              "example": "6a45920a0b5c8adf78216522"
+                            },
+                            "tenantId": {
+                              "type": "string",
+                              "example": "6a3bce3ef26b81436b51b0a3"
+                            },
+                            "customerId": {
+                              "type": "string",
+                              "example": "6a4526d521f3256568c3d5c3"
+                            },
+                            "subscriptionId": {
+                              "type": "string",
+                              "example": "6a4528280b5c8adf78216501"
+                            },
+                            "amount": {
+                              "type": "integer",
+                              "example": 483871
+                            },
+                            "currency": {
+                              "type": "string",
+                              "example": "NGN"
+                            },
+                            "status": {
+                              "type": "string",
+                              "example": "paid"
+                            },
+                            "nombaOrderReference": {
+                              "type": "string",
+                              "example": "txn_8c4b02f9191b383d"
+                            },
+                            "isRenewal": {
+                              "type": "boolean",
+                              "example": false
+                            },
+                            "description": {
+                              "type": "string",
+                              "example": "Plan upgrade from 6a4526ae21f3256568c3d5c2 to 6a4526ae21f3256568c3d5c5"
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-07-02T07:46:00.000Z"
+                            }
+                          },
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallets": {
+      "get": {
+        "summary": "List Wallets",
+        "description": "Retrieve all customer credit wallets belonging to the tenant.",
+        "tags": [
+          "Credit Wallets"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "query",
+            "description": "Filter by Customer ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of wallets retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Wallet"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Wallet",
+        "description": "Create a new credit wallet for a customer.",
+        "tags": [
+          "Credit Wallets"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "customerId"
+                ],
+                "properties": {
+                  "customerId": {
+                    "type": "string",
+                    "example": "651a2b3c4d5e6f7a8b9c0d1e"
+                  },
+                  "subscriptionId": {
+                    "type": "string",
+                    "example": "651a2b3c4d5e6f7a8b9c0d20"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Wallet created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Wallet"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallets/{id}": {
+      "get": {
+        "summary": "Get Wallet Details",
+        "description": "Retrieve credit wallet configuration and balance details by ID.",
+        "tags": [
+          "Credit Wallets"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Wallet details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Wallet"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Wallet not found"
+          }
+        }
+      }
+    },
+    "/wallets/{id}/top-up": {
+      "post": {
+        "summary": "Top Up Wallet Credits",
+        "description": "Manually add credit funds to a wallet. Amount should be specified in Kobo.",
+        "tags": [
+          "Credit Wallets"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "amount",
+                  "description"
+                ],
+                "properties": {
+                  "amount": {
+                    "type": "integer",
+                    "description": "Amount in Kobo to credit",
+                    "example": 500000
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "Manual balance credit top-up"
+                  },
+                  "referenceId": {
+                    "type": "string",
+                    "example": "ref_topup_9921"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Wallet credited successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreditDebitResult"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallets/{id}/deduct": {
+      "post": {
+        "summary": "Deduct Wallet Credits",
+        "description": "Deduct credit funds from a wallet balance based on usage consumption. Amount should be specified in Kobo.",
+        "tags": [
+          "Credit Wallets"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "amount",
+                  "description"
+                ],
+                "properties": {
+                  "amount": {
+                    "type": "integer",
+                    "description": "Amount in Kobo to deduct",
+                    "example": 1000
+                  },
+                  "description": {
+                    "type": "string",
+                    "example": "API usage: 10 compute minutes"
+                  },
+                  "referenceId": {
+                    "type": "string",
+                    "example": "usage_ref_8829"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Wallet debited successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreditDebitResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Insufficient wallet balance"
+          }
+        }
+      }
+    },
+    "/wallets/{id}/transactions": {
+      "get": {
+        "summary": "List Wallet Transactions",
+        "description": "Retrieve the ledger history of all credit and debit transactions for a specific wallet.",
+        "tags": [
+          "Credit Wallets"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Wallet transaction history retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WalletTransaction"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallets/{id}/auto-top-up": {
+      "patch": {
+        "summary": "Update Auto Top-Up Settings",
+        "description": "Configure auto top-up threshold triggers and charge refill amounts.",
+        "tags": [
+          "Credit Wallets"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "autoTopUp"
+                ],
+                "properties": {
+                  "autoTopUp": {
+                    "type": "boolean",
+                    "example": true
+                  },
+                  "autoTopUpAmount": {
+                    "type": "integer",
+                    "description": "Amount in Kobo to charge Nomba on trigger",
+                    "example": 500000
+                  },
+                  "autoTopUpTrigger": {
+                    "type": "integer",
+                    "description": "Balance threshold in Kobo that triggers top-up",
+                    "example": 10000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Auto top-up configuration updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Wallet"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}/pause": {
+      "post": {
+        "summary": "Pause Subscription",
+        "description": "Pause an active subscription.",
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Subscription ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subscription paused"
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}/resume": {
+      "post": {
+        "summary": "Resume Subscription",
+        "description": "Resume a paused subscription.",
+        "tags": [
+          "Subscriptions"
+        ],
+        "security": [
+          {
+            "apiKeyAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Subscription ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subscription resumed"
+          }
+        }
+      }
+    },
+    "/portal/subscription": {
+      "get": {
+        "summary": "Get Portal Subscription",
+        "description": "Customer views their own subscription using a portal token.",
+        "tags": [
+          "Portal"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subscription details"
+          }
+        }
+      }
+    },
+    "/portal/invoices": {
+      "get": {
+        "summary": "Get Portal Invoices",
+        "description": "Customer views their invoices.",
+        "tags": [
+          "Portal"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of invoices"
+          }
+        }
+      }
+    },
+    "/portal/update-payment-method": {
+      "post": {
+        "summary": "Update Payment Method",
+        "description": "Customer requests a Nomba checkout link to tokenize a new card.",
+        "tags": [
+          "Portal"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Checkout link generated"
+          }
+        }
+      }
+    },
+    "/portal/cancel": {
+      "post": {
+        "summary": "Cancel Portal Subscription",
+        "description": "Customer schedules cancellation.",
+        "tags": [
+          "Portal"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subscription scheduled for cancellation"
+          }
         }
       }
     }
@@ -550,6 +2305,362 @@
         "scheme": "bearer",
         "bearerFormat": "JWT",
         "description": "Provide the short-lived Portal token returned by POST /portal/sessions."
+      }
+    },
+    "schemas": {
+      "Subscription": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d20"
+          },
+          "tenantId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+          },
+          "customerId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+          },
+          "planId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d1f"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "active",
+              "past_due",
+              "canceled",
+              "unpaid"
+            ],
+            "example": "active"
+          },
+          "tokenKey": {
+            "type": "string",
+            "example": "tok_123456789",
+            "nullable": true
+          },
+          "cardLast4": {
+            "type": "string",
+            "example": "4242",
+            "nullable": true
+          },
+          "cardBrand": {
+            "type": "string",
+            "example": "VISA",
+            "nullable": true
+          },
+          "nombaCheckoutOrderRef": {
+            "type": "string",
+            "example": "sub_123_456",
+            "nullable": true
+          },
+          "currentPeriodStart": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-31T10:00:00Z",
+            "nullable": true
+          },
+          "currentPeriodEnd": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-04-30T10:00:00Z",
+            "nullable": true
+          },
+          "nextBillingDate": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-04-30T10:00:00Z",
+            "nullable": true
+          },
+          "cancelAtPeriodEnd": {
+            "type": "boolean",
+            "example": false
+          },
+          "cancellationReason": {
+            "type": "string",
+            "example": "No longer needed",
+            "nullable": true
+          },
+          "canceledAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-04-15T12:00:00Z",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {
+              "referral": "ad-campaign"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-31T10:00:00Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-31T10:00:00Z"
+          }
+        }
+      },
+      "Invoice": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d21"
+          },
+          "tenantId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+          },
+          "subscriptionId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d20"
+          },
+          "customerId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+          },
+          "amount": {
+            "type": "integer",
+            "description": "Amount in Kobo",
+            "example": 500000
+          },
+          "currency": {
+            "type": "string",
+            "default": "NGN",
+            "example": "NGN"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "paid",
+              "failed"
+            ],
+            "example": "paid"
+          },
+          "nombaOrderReference": {
+            "type": "string",
+            "example": "sub_123_456"
+          },
+          "nombaTransactionId": {
+            "type": "string",
+            "example": "txn_987654321",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "example": "Pro Plan Renewal"
+          },
+          "isRenewal": {
+            "type": "boolean",
+            "example": true
+          },
+          "failureReason": {
+            "type": "string",
+            "example": "Insufficient funds",
+            "nullable": true
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "example": "bill_subId_periodEnd"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-31T10:05:00Z",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-31T10:00:00Z"
+          }
+        }
+      },
+      "Wallet": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d22"
+          },
+          "tenantId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+          },
+          "customerId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+          },
+          "subscriptionId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d20",
+            "nullable": true
+          },
+          "balance": {
+            "type": "integer",
+            "description": "Credit balance in Kobo",
+            "example": 250000
+          },
+          "currency": {
+            "type": "string",
+            "default": "NGN",
+            "example": "NGN"
+          },
+          "creditValue": {
+            "type": "number",
+            "default": 100,
+            "example": 100
+          },
+          "lowBalanceThreshold": {
+            "type": "integer",
+            "default": 50000,
+            "example": 50000
+          },
+          "autoTopUp": {
+            "type": "boolean",
+            "default": false,
+            "example": true
+          },
+          "autoTopUpAmount": {
+            "type": "integer",
+            "example": 500000,
+            "nullable": true
+          },
+          "autoTopUpTrigger": {
+            "type": "integer",
+            "default": 0,
+            "example": 10000,
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true,
+            "example": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {}
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-31T10:00:00Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-31T10:00:00Z"
+          }
+        }
+      },
+      "WalletTransaction": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d23"
+          },
+          "tenantId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+          },
+          "walletId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d22"
+          },
+          "customerId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "credit",
+              "debit",
+              "auto_topup",
+              "manual_topup",
+              "refund",
+              "expiry"
+            ],
+            "example": "debit"
+          },
+          "amount": {
+            "type": "integer",
+            "description": "Amount in Kobo",
+            "example": 1000
+          },
+          "balanceAfter": {
+            "type": "integer",
+            "description": "Snapshot of wallet balance after this transaction in Kobo",
+            "example": 249000
+          },
+          "description": {
+            "type": "string",
+            "example": "API usage: 10 compute minutes"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "example": "usage_ref_8829",
+            "nullable": true
+          },
+          "invoiceId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d21",
+            "nullable": true
+          },
+          "nombaOrderRef": {
+            "type": "string",
+            "example": "topup_123_456",
+            "nullable": true
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "example": {}
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-31T10:00:00Z"
+          }
+        }
+      },
+      "CreditDebitResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "walletId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d22"
+          },
+          "transactionId": {
+            "type": "string",
+            "example": "651a2b3c4d5e6f7a8b9c0d23"
+          },
+          "balanceBefore": {
+            "type": "integer",
+            "example": 250000
+          },
+          "balanceAfter": {
+            "type": "integer",
+            "example": 249000
+          }
+        }
       }
     }
   }
