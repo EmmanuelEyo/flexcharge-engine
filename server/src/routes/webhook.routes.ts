@@ -10,6 +10,7 @@ import { INTERVAL_DAYS } from "../types/subscription.types.js";
 import type { PlanInterval } from "../types/subscription.types.js";
 import crypto from "node:crypto";
 import { env } from "../config/environment.js";
+import { queueEmail } from "../utils/emailDispatcher.js";
 
 const router = Router();
 
@@ -149,10 +150,68 @@ router.post(
           nombaOrderReference: orderReference,
         });
 
-        if (invoice) {
+        if (invoice && invoice.status === "pending") {
           logger.info(
             { orderReference, invoiceId: invoice._id },
-            "Webhook matched an invoice — renewal payment processed externally"
+            "Webhook matched a pending invoice — processing manual renewal payment"
+          );
+
+          // Mark invoice as paid
+          invoice.status = "paid";
+          invoice.paidAt = new Date();
+          
+          const transactionId = payload?.data?.transactionId || payload?.transactionId;
+          if (transactionId) {
+            invoice.nombaTransactionId = transactionId;
+          }
+          await invoice.save();
+
+          // Update subscription
+          const sub = await Subscription.findById(invoice.subscriptionId).populate("planId");
+          if (sub) {
+            (sub as any)._previousStatus = sub.status;
+            sub.status = "active";
+
+            // Advance billing dates
+            const now = new Date();
+            const plan = sub.planId as any;
+            const newPeriodStart = sub.currentPeriodEnd || now;
+            const newPeriodEnd = calculateNextBillingDate(
+              newPeriodStart,
+              plan.interval as PlanInterval
+            );
+
+            sub.currentPeriodStart = newPeriodStart;
+            sub.currentPeriodEnd = newPeriodEnd;
+            sub.nextBillingDate = newPeriodEnd;
+            sub.dunningAttemptCount = 0;
+            sub.lastDunningAt = undefined;
+            await sub.save();
+
+            // Fire webhook
+            await queueWebhook(sub.tenantId, "subscription.renewed", {
+              subscriptionId: sub._id,
+              invoiceId: invoice._id,
+              recoveredViaManualPayment: true,
+            });
+
+            // Send receipt email
+            await queueEmail("customer", "receipt", {
+              tenantId: sub.tenantId,
+              customerId: sub.customerId as any,
+              subscriptionId: sub._id,
+              invoiceId: invoice._id,
+            });
+
+            logger.info(
+              { subscriptionId: sub._id, invoiceId: invoice._id },
+              "Manual renewal payment processed successfully"
+            );
+          }
+        } else if (invoice) {
+          logger.info(
+            { orderReference, invoiceId: invoice._id },
+            "Webhook matched an invoice that is already paid or failed"
           );
         } else {
           logger.warn(
@@ -291,6 +350,15 @@ router.post(
         },
         "Subscription activated via Nomba webhook"
       );
+
+      // Queue email notifications: welcome (customer) + new_subscriber (tenant)
+      const emailContext = {
+        tenantId: subscription.tenantId,
+        customerId: subscription.customerId as any,
+        subscriptionId: subscription._id,
+      };
+      await queueEmail("customer", "welcome", emailContext);
+      await queueEmail("tenant", "new_subscriber", emailContext);
     } catch (error) {
       logger.error(
         {

@@ -28,6 +28,7 @@ export interface IInvoice extends Document {
   nombaOrderReference?: string;
   nombaTransactionId?: string;
   nombaTransactionRef?: string;
+  checkoutLink?: string;
 
   // === DETAILS ===
   description?: string;
@@ -95,6 +96,10 @@ const invoiceSchema = new Schema<IInvoice>(
       trim: true,
     },
     nombaTransactionRef: {
+      type: String,
+      trim: true,
+    },
+    checkoutLink: {
       type: String,
       trim: true,
     },

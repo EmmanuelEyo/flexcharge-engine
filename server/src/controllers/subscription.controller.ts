@@ -25,6 +25,7 @@ import { calculateProration } from "../utils/proration.js";
 import { Wallet } from "../models/Wallet.js";
 import { creditWallet, createWallet } from "../services/wallet.service.js";
 import { queueWebhook } from "../services/webhook.service.js";
+import { queueEmail } from "../utils/emailDispatcher.js";
 
 /**
  * Subscription Controller — Manages the full subscription lifecycle.
@@ -274,6 +275,16 @@ export async function cancelSubscription(
     }
 
     sendSuccess(res, subscription);
+
+    // Queue cancel emails to customer and tenant (fire-and-forget after response)
+    const cancelCtx = {
+      tenantId: req.tenantId!,
+      customerId: subscription.customerId as any,
+      subscriptionId: subscription._id,
+      cancellationReason: input.cancellationReason,
+    };
+    queueEmail("customer", "cancel", cancelCtx);
+    queueEmail("tenant", "cancel", cancelCtx);
   } catch (error) {
     next(error);
   }

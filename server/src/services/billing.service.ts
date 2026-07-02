@@ -6,9 +6,11 @@ import { Customer } from "../models/Customer.js";
 import { DunningAttempt } from "../models/DunningAttempt.js";
 import { nombaService } from "./nomba.service.js";
 import { queueWebhook } from "./webhook.service.js";
+import { queueEmail } from "../utils/emailDispatcher.js";
 import { logger } from "../utils/logger.js";
 import { INTERVAL_DAYS } from "../types/subscription.types.js";
 import type { PlanInterval } from "../types/subscription.types.js";
+import { env } from "../config/environment.js";
 
 /**
  * Billing Service — Core renewal scanning and charge processing.
@@ -94,10 +96,6 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
     return { success: false, error: `Subscription is ${subscription.status}, not active` };
   }
 
-  if (!subscription.tokenKey) {
-    return { success: false, error: "No payment token on file" };
-  }
-
   const plan = subscription.planId as any;
   const customer = subscription.customerId as any;
 
@@ -136,6 +134,72 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
     idempotencyKey,
   });
 
+  // === MANUAL RENEWAL FLOW ===
+  if (subscription.renewalMode === "manual" || !subscription.tokenKey) {
+    try {
+      const checkoutResult = await nombaService.createCheckoutOrder({
+        orderReference,
+        amount: plan.amount,
+        currency: plan.currency || "NGN",
+        customerEmail: customer.email,
+        callbackUrl: `${env.FRONTEND_URL}/success?orderRef=${orderReference}`,
+        tokenizeCard: false,
+      });
+
+      invoice.checkoutLink = checkoutResult.checkoutLink;
+      await invoice.save();
+
+      // Transition subscription to past_due
+      if (subscription.status === "active") {
+        (subscription as any)._previousStatus = subscription.status;
+        subscription.status = "past_due";
+      }
+      subscription.dunningAttemptCount = 1;
+      subscription.lastDunningAt = new Date();
+      await subscription.save();
+
+      // Create DunningAttempt record for manual reminders
+      const retryDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // +24h default
+      await DunningAttempt.create({
+        tenantId: subscription.tenantId,
+        subscriptionId: subscription._id,
+        invoiceId: invoice._id,
+        attemptNumber: 1,
+        scheduledFor: retryDate,
+        status: "scheduled",
+        failureReason: "Awaiting manual payment",
+        nextRetryAt: retryDate,
+        retryStrategy: "manual",
+      });
+
+      // Send manual invoice email
+      await queueEmail("customer", "manual_invoice", {
+        tenantId: subscription.tenantId,
+        customerId: customer._id,
+        subscriptionId: subscription._id,
+        invoiceId: invoice._id,
+      });
+
+      logger.info(
+        { subscriptionId: subscription._id, invoiceId: invoice._id },
+        "Created manual renewal invoice and entered dunning"
+      );
+
+      return { success: true, invoiceId: invoice._id };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown manual checkout error";
+      
+      return await handleChargeFailed(
+        subscription,
+        invoice,
+        undefined,
+        errorMessage
+      );
+    }
+  }
+
+  // === AUTO RENEWAL FLOW ===
   try {
     // Charge the tokenized card via Nomba
     const chargeResult = await nombaService.chargeTokenizedCard({
@@ -192,6 +256,14 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
         },
         "Subscription renewed successfully"
       );
+
+      // Queue receipt email to customer
+      await queueEmail("customer", "receipt", {
+        tenantId: subscription.tenantId,
+        customerId: customer._id,
+        subscriptionId: subscription._id,
+        invoiceId: invoice._id,
+      });
 
       return { success: true, invoiceId: invoice._id };
     } else {
@@ -276,6 +348,18 @@ async function handleChargeFailed(
     "Subscription charge failed — entering dunning"
   );
 
+  // Queue dunning email to customer + payment_failed to tenant
+  const emailCtx = {
+    tenantId: subscription.tenantId,
+    customerId: (subscription.customerId as any)?._id || subscription.customerId,
+    subscriptionId: subscription._id,
+    invoiceId: invoice._id,
+    failureReason: failureReason || "Payment declined",
+    attemptNumber: subscription.dunningAttemptCount,
+  };
+  await queueEmail("customer", "dunning", emailCtx);
+  await queueEmail("tenant", "payment_failed", emailCtx);
+
   return {
     success: false,
     invoiceId: invoice._id,
@@ -304,6 +388,20 @@ export async function processCancelAtPeriodEnd(): Promise<number> {
     });
 
     canceledCount++;
+
+    // Queue cancel emails to both customer and tenant
+    await queueEmail("customer", "cancel", {
+      tenantId: subscription.tenantId,
+      customerId: subscription.customerId as any,
+      subscriptionId: subscription._id,
+      cancellationReason: subscription.cancellationReason || "Period ended",
+    });
+    await queueEmail("tenant", "cancel", {
+      tenantId: subscription.tenantId,
+      customerId: subscription.customerId as any,
+      subscriptionId: subscription._id,
+      cancellationReason: subscription.cancellationReason || "Period ended",
+    });
 
     logger.info(
       { subscriptionId: subscription._id },
