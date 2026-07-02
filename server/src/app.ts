@@ -104,6 +104,9 @@ app.use("/api", apiLimiter);
 
 // ===== REQUEST LOGGING =====
 app.use((req, _res, next) => {
+  // Prevent health checks from spamming the logs
+  if (req.url === "/health") return next();
+
   logger.info(
     { method: req.method, url: req.url },
     "Incoming request"
