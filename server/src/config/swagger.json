@@ -1325,8 +1325,8 @@
     },
     "/subscriptions/{id}/simulate-change": {
       "post": {
-        "summary": "Simulate Plan Change (Proration Dry-Run)",
-        "description": "Preview the financial impact (credits, new charges, amount due) of changing a subscription's plan before applying the change.",
+        "summary": "Simulate Plan Change",
+        "description": "Preview a plan change (dry-run). Returns proration line items and credits.",
         "tags": [
           "Subscriptions"
         ],
@@ -1343,6 +1343,7 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "description": "Subscription ID",
             "schema": {
               "type": "string"
             }
@@ -1359,13 +1360,11 @@
                 ],
                 "properties": {
                   "newPlanId": {
-                    "type": "string",
-                    "example": "651a2b3c4d5e6f7a8b9c0d1f"
+                    "type": "string"
                   },
                   "changeDate": {
                     "type": "string",
-                    "format": "date-time",
-                    "example": "2026-07-01T17:25:39.000Z"
+                    "format": "date-time"
                   }
                 }
               }
@@ -1374,7 +1373,7 @@
         },
         "responses": {
           "200": {
-            "description": "Simulation generated successfully",
+            "description": "Simulation payload",
             "content": {
               "application/json": {
                 "schema": {
@@ -1399,19 +1398,24 @@
                           "type": "object",
                           "properties": {
                             "id": {
-                              "type": "string"
+                              "type": "string",
+                              "example": "6a4528280b5c8adf78216501"
                             },
                             "currentPlanId": {
-                              "type": "string"
+                              "type": "string",
+                              "example": "6a4526ae21f3256568c3d5c2"
                             },
                             "currentPlanName": {
-                              "type": "string"
+                              "type": "string",
+                              "example": "Pro Monthly Plan"
                             },
                             "newPlanId": {
-                              "type": "string"
+                              "type": "string",
+                              "example": "6a4526ae21f3256568c3d5c5"
                             },
                             "newPlanName": {
-                              "type": "string"
+                              "type": "string",
+                              "example": "Enterprise Monthly Plan"
                             }
                           }
                         },
@@ -1420,33 +1424,47 @@
                           "properties": {
                             "type": {
                               "type": "string",
+                              "enum": [
+                                "upgrade",
+                                "downgrade"
+                              ],
                               "example": "upgrade"
                             },
                             "changeDate": {
-                              "type": "string"
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-07-02T07:45:00.000Z"
                             },
                             "currentPeriod": {
                               "type": "object",
                               "properties": {
                                 "start": {
-                                  "type": "string"
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "example": "2026-07-01T00:00:00.000Z"
                                 },
                                 "end": {
-                                  "type": "string"
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "example": "2026-08-01T00:00:00.000Z"
                                 }
                               }
                             },
                             "totalDaysInPeriod": {
-                              "type": "number"
+                              "type": "integer",
+                              "example": 31
                             },
                             "daysRemaining": {
-                              "type": "number"
+                              "type": "integer",
+                              "example": 30
                             },
                             "unusedCredit": {
-                              "type": "number"
+                              "type": "integer",
+                              "example": 483870
                             },
                             "newPlanCostRemaining": {
-                              "type": "number"
+                              "type": "integer",
+                              "example": 967741
                             }
                           }
                         },
@@ -1454,36 +1472,47 @@
                           "type": "object",
                           "properties": {
                             "subtotal": {
-                              "type": "number"
+                              "type": "integer",
+                              "example": 483871
                             },
                             "subtotalFormatted": {
-                              "type": "string"
+                              "type": "string",
+                              "example": "₦4,838.71"
                             },
                             "amountDue": {
-                              "type": "number"
+                              "type": "integer",
+                              "example": 483871
                             },
                             "amountDueFormatted": {
-                              "type": "string"
+                              "type": "string",
+                              "example": "₦4,838.71"
                             },
                             "credit": {
-                              "type": "number"
+                              "type": "integer",
+                              "example": 483870
                             },
                             "creditFormatted": {
-                              "type": "string"
+                              "type": "string",
+                              "example": "₦4,838.70"
                             },
                             "currency": {
-                              "type": "string"
+                              "type": "string",
+                              "example": "NGN"
                             }
                           }
                         },
                         "nextBillingDate": {
-                          "type": "string"
+                          "type": "string",
+                          "format": "date-time",
+                          "example": "2026-08-01T00:00:00.000Z"
                         },
                         "nextBillingAmount": {
-                          "type": "number"
+                          "type": "integer",
+                          "example": 1000000
                         },
                         "nextBillingAmountFormatted": {
-                          "type": "string"
+                          "type": "string",
+                          "example": "₦10,000.00"
                         }
                       }
                     }
@@ -1497,8 +1526,8 @@
     },
     "/subscriptions/{id}/change-plan": {
       "post": {
-        "summary": "Change Subscription Plan (Execute Upgrade/Downgrade)",
-        "description": "Upgrade or downgrade an active subscription to a new plan, calculating proration and executing charges or issuing credits immediately.",
+        "summary": "Change Subscription Plan",
+        "description": "Execute a plan upgrade or downgrade, calculate proration, and charge/credit.",
         "tags": [
           "Subscriptions"
         ],
@@ -1515,6 +1544,7 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "description": "Subscription ID",
             "schema": {
               "type": "string"
             }
@@ -1531,13 +1561,7 @@
                 ],
                 "properties": {
                   "newPlanId": {
-                    "type": "string",
-                    "example": "651a2b3c4d5e6f7a8b9c0d1f"
-                  },
-                  "changeDate": {
-                    "type": "string",
-                    "format": "date-time",
-                    "example": "2026-07-01T17:25:39.000Z"
+                    "type": "string"
                   }
                 }
               }
@@ -1556,21 +1580,112 @@
                       "type": "boolean",
                       "example": true
                     },
-                    "message": {
-                      "type": "string",
-                      "example": "Subscription plan changed successfully"
-                    },
                     "data": {
                       "type": "object",
                       "properties": {
                         "subscription": {
-                          "$ref": "#/components/schemas/Subscription"
-                        },
-                        "proration": {
-                          "type": "object"
+                          "type": "object",
+                          "properties": {
+                            "_id": {
+                              "type": "string",
+                              "example": "6a4528280b5c8adf78216501"
+                            },
+                            "tenantId": {
+                              "type": "string",
+                              "example": "6a3bce3ef26b81436b51b0a3"
+                            },
+                            "customerId": {
+                              "type": "string",
+                              "example": "6a4526d521f3256568c3d5c3"
+                            },
+                            "planId": {
+                              "type": "string",
+                              "example": "6a4526ae21f3256568c3d5c5"
+                            },
+                            "status": {
+                              "type": "string",
+                              "example": "active"
+                            },
+                            "cancelAtPeriodEnd": {
+                              "type": "boolean",
+                              "example": false
+                            },
+                            "currentPeriodStart": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-07-01T14:46:00.419Z"
+                            },
+                            "currentPeriodEnd": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-08-01T14:46:00.419Z"
+                            },
+                            "tokenKey": {
+                              "type": "string",
+                              "example": "token_key_here"
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-07-01T14:46:00.419Z"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-07-02T07:46:00.000Z"
+                            }
+                          }
                         },
                         "invoice": {
-                          "$ref": "#/components/schemas/Invoice"
+                          "type": "object",
+                          "properties": {
+                            "_id": {
+                              "type": "string",
+                              "example": "6a45920a0b5c8adf78216522"
+                            },
+                            "tenantId": {
+                              "type": "string",
+                              "example": "6a3bce3ef26b81436b51b0a3"
+                            },
+                            "customerId": {
+                              "type": "string",
+                              "example": "6a4526d521f3256568c3d5c3"
+                            },
+                            "subscriptionId": {
+                              "type": "string",
+                              "example": "6a4528280b5c8adf78216501"
+                            },
+                            "amount": {
+                              "type": "integer",
+                              "example": 483871
+                            },
+                            "currency": {
+                              "type": "string",
+                              "example": "NGN"
+                            },
+                            "status": {
+                              "type": "string",
+                              "example": "paid"
+                            },
+                            "nombaOrderReference": {
+                              "type": "string",
+                              "example": "txn_8c4b02f9191b383d"
+                            },
+                            "isRenewal": {
+                              "type": "boolean",
+                              "example": false
+                            },
+                            "description": {
+                              "type": "string",
+                              "example": "Plan upgrade from 6a4526ae21f3256568c3d5c2 to 6a4526ae21f3256568c3d5c5"
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "example": "2026-07-02T07:46:00.000Z"
+                            }
+                          },
+                          "nullable": true
                         }
                       }
                     }
@@ -2024,112 +2139,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/subscriptions/{id}/change-plan": {
-      "post": {
-        "summary": "Change Subscription Plan",
-        "description": "Execute a plan upgrade or downgrade, calculate proration, and charge/credit.",
-        "tags": [
-          "Subscriptions"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Subscription ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "newPlanId"
-                ],
-                "properties": {
-                  "newPlanId": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Plan changed successfully"
-          }
-        }
-      }
-    },
-    "/subscriptions/{id}/simulate-change": {
-      "post": {
-        "summary": "Simulate Plan Change",
-        "description": "Preview a plan change (dry-run). Returns proration line items and credits.",
-        "tags": [
-          "Subscriptions"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Subscription ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "newPlanId"
-                ],
-                "properties": {
-                  "newPlanId": {
-                    "type": "string"
-                  },
-                  "changeDate": {
-                    "type": "string",
-                    "format": "date-time"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Simulation payload"
           }
         }
       }

@@ -55,7 +55,8 @@
   --color-outline-variant: #c7c4d8;
   --color-surface-tint: #4d44e3;
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-montserrat);
 
   --radius-DEFAULT: 0.25rem;
   --radius-lg: 0.5rem;
@@ -91,4 +92,8 @@ body {
   background-color: var(--color-background);
   color: var(--color-on-background);
   -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
 }

@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
+import basicAuth from "express-basic-auth";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -111,7 +112,15 @@ app.use((req, _res, next) => {
 });
 
 // ===== SWAGGER DOCS =====
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.use(
+  "/docs",
+  basicAuth({
+    users: { admin: "hackathon2026" },
+    challenge: true,
+  }),
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerDocument)
+);
 
 // ===== API ROUTES =====
 app.use("/api/auth", authRoutes);

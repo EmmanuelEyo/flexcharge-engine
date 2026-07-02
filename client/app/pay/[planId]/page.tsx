@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useEffect, useState, use } from "react";
@@ -13,7 +14,7 @@ interface PublicPlan {
   description: string;
   tenantId: {
     _id: string;
-    businessName?: string;
+    name?: string;
     logoUrl?: string;
   };
 }
@@ -121,13 +122,13 @@ export default function PayPage({
           {/* Tenant Branding */}
           <div className="mb-10">
             {plan.tenantId?.logoUrl ? (
-              <img src={plan.tenantId.logoUrl} alt={plan.tenantId.businessName} className="h-10 mb-4" />
+              <img src={plan.tenantId.logoUrl} alt={plan.tenantId.name || ""} className="h-10 mb-4" />
             ) : (
               <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center mb-4">
                 <span className="material-symbols-outlined text-indigo-600 text-2xl">bolt</span>
               </div>
             )}
-            <h1 className="text-2xl font-bold text-slate-900">{plan.tenantId?.businessName || "FlexCharge Merchant"}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{plan.tenantId?.name || "FlexCharge Merchant"}</h1>
             <p className="text-slate-500 mt-1">Complete your subscription</p>
           </div>
 
