@@ -17,9 +17,10 @@ interface CreatePlanModalProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (data: PlanFormData) => void;
+  isSubmitting?: boolean;
 }
 
-export default function CreatePlanModal({ open, onClose, onSubmit, }: CreatePlanModalProps) {
+export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting = false }: CreatePlanModalProps) {
   const [form, setForm] = React.useState<PlanFormData>({
     name: "",
     currency: "NGN",
@@ -140,11 +141,11 @@ export default function CreatePlanModal({ open, onClose, onSubmit, }: CreatePlan
         </form>
 
         <div className="px-6 py-5 border-t border-slate-200 flex justify-end items-center gap-3 flex-shrink-0 bg-white">
-          <Button variant="secondary" type="button" onClick={onClose}>
+          <Button variant="secondary" type="button" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit" form="create-plan-form">
-            Create Plan
+          <Button variant="primary" type="submit" form="create-plan-form" disabled={isSubmitting}>
+            {isSubmitting ? "Creating..." : "Create Plan"}
           </Button>
         </div>
       </div>

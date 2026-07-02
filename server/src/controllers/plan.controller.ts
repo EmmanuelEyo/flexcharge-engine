@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { Types } from "mongoose";
 import { Plan } from "../models/Plan.js";
 import { tenantFilter } from "../middleware/tenantScope.js";
 import {
@@ -170,7 +171,8 @@ export async function deletePlan(
 /**
  * GET /plans/public/:id
  * Retrieve a single plan for public checkout pages.
- * Does not require tenantId scoping as it's public.
+ * Accepts either a MongoDB ObjectId or a plan slug (e.g. "plan_pro_001").
+ * Does not require tenant auth — this is intentionally public.
  */
 export async function getPublicPlan(
   req: Request,
@@ -178,8 +180,17 @@ export async function getPublicPlan(
   next: NextFunction
 ): Promise<void> {
   try {
-    const plan = await Plan.findOne({ _id: req.params.id, isActive: true })
-      .populate("tenantId", "name"); // Only expose name as Tenant schema stores name, not businessName
+    const identifier = req.params.id;
+
+    // Determine if the identifier is a valid MongoDB ObjectId or a slug string
+    const isObjectId = Types.ObjectId.isValid(identifier) && identifier.length === 24;
+
+    const query = isObjectId
+      ? { _id: identifier, isActive: true }
+      : { slug: identifier, isActive: true };
+
+    const plan = await Plan.findOne(query)
+      .populate("tenantId", "name logoUrl"); // Expose name + logoUrl for branding on checkout page
 
     if (!plan) {
       throw new NotFoundError("Plan");
