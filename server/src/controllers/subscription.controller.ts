@@ -375,7 +375,10 @@ export async function publicCheckout(
         });
 
         checkoutLink = checkout.checkoutLink;
-        savedOrderRef = checkout.orderReference;
+        // BUG FIX: Do NOT overwrite `savedOrderRef` with `checkout.orderReference`!
+        // Nomba's API returns a generated UUID in the response, but sends back our original `orderReference` in the webhook.
+        // We must save our original reference so the webhook can find the subscription.
+        // savedOrderRef = checkout.orderReference;
 
         subscription.nombaCheckoutOrderRef = savedOrderRef;
         subscription.checkoutLink = checkoutLink;
