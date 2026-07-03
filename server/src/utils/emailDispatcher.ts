@@ -22,8 +22,8 @@ interface QueueEmailContext {
   cancellationReason?: string;
 }
 
-type CustomerEmailType = "welcome" | "receipt" | "dunning" | "cancel" | "manual_invoice" | "manual_invoice_reminder";
-type TenantEmailType = "new_subscriber" | "payment_failed" | "cancel";
+type CustomerEmailType = "welcome" | "receipt" | "dunning" | "cancel" | "manual_invoice" | "manual_invoice_reminder" | "refund_processed";
+type TenantEmailType = "new_subscriber" | "payment_failed" | "cancel" | "withdrawal_successful" | "withdrawal_failed" | "refund_deducted";
 
 export async function queueEmail(
   recipientType: "customer",

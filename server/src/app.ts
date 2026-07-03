@@ -48,6 +48,8 @@ import webhookRoutes from "./routes/webhook.routes.js";
 import subscriptionRoutes from "./routes/subscription.routes.js";
 import invoiceRoutes from "./routes/invoice.routes.js";
 import walletRoutes from "./routes/wallet.routes.js";
+import ledgerRoutes from "./routes/ledger.routes.js";
+import analyticsRoutes from "./routes/analytics.routes.js";
 
 /**
  * Express Application Setup
@@ -141,6 +143,8 @@ app.use("/api/portal", portalRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/wallets", walletRoutes);
+app.use("/api/ledger", ledgerRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 // ===== HEALTH CHECK =====
 app.get("/health", (_req, res) => {

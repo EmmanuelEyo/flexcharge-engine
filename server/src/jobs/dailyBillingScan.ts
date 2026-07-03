@@ -3,6 +3,7 @@ import {
   findDueSubscriptions,
   processRenewal,
   processCancelAtPeriodEnd,
+  sendUpcomingRenewalReminders,
 } from "../services/billing.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -24,7 +25,16 @@ export function defineDailyBillingScanJob(agenda: Agenda): void {
     logger.info("Starting daily billing scan");
 
     try {
-      // 1. Process cancel-at-period-end subscriptions
+      // 1. Send advance renewal reminders for manual subscriptions
+      const reminderCount = await sendUpcomingRenewalReminders();
+      if (reminderCount > 0) {
+        logger.info(
+          { reminderCount },
+          "Sent upcoming renewal reminders for manual subscriptions"
+        );
+      }
+
+      // 2. Process cancel-at-period-end subscriptions
       const canceledCount = await processCancelAtPeriodEnd();
       if (canceledCount > 0) {
         logger.info(

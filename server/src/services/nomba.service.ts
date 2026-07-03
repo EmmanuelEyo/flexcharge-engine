@@ -546,6 +546,103 @@ class NombaService {
   }
 
   // ============================================================
+  // TRANSFERS & REFUNDS (Ledger / Withdrawal)
+  // ============================================================
+
+  /**
+   * Verify a bank account's name before a transfer.
+   * POST /v1/transfers/bank/lookup
+   */
+  async lookupBankAccount(bankCode: string, accountNumber: string): Promise<{ accountName: string }> {
+    const authHeaders = await this.getAuthHeaders();
+    const response = await this.client.post(
+      `/v1/transfers/bank/lookup`,
+      { bankCode, accountNumber },
+      { headers: authHeaders }
+    );
+    
+    logger.info({ bankCode, accountNumber }, "Nomba bank account lookup completed");
+    return { accountName: response.data.data.accountName };
+  }
+
+  /**
+   * Initiate a payout from our Nomba master account.
+   * POST /v2/transfers/bank
+   * 
+   * @param amount - Transfer amount in KOBO
+   */
+  async transferToBank(params: {
+    amount: number;
+    bankCode: string;
+    accountNumber: string;
+    accountName: string;
+    merchantTxRef: string;
+    senderName: string;
+    narration: string;
+  }): Promise<{ status: string; transferId: string }> {
+    const authHeaders = await this.getAuthHeaders();
+    const amountInNaira = (params.amount / 100).toFixed(2);
+
+    const response = await this.client.post(
+      `/v2/transfers/bank`,
+      {
+        amount: amountInNaira,
+        accountNumber: params.accountNumber,
+        accountName: params.accountName,
+        bankCode: params.bankCode,
+        merchantTxRef: params.merchantTxRef,
+        senderName: params.senderName,
+        narration: params.narration,
+      },
+      { headers: authHeaders }
+    );
+
+    logger.info(
+      { merchantTxRef: params.merchantTxRef, amount: amountInNaira, accountNumber: params.accountNumber },
+      "Nomba bank transfer initiated"
+    );
+
+    return {
+      status: response.data.data?.status || "SUCCESS",
+      transferId: response.data.data?.id || params.merchantTxRef,
+    };
+  }
+
+  /**
+   * Refund a completed checkout transaction.
+   * POST /v1/checkout/refund
+   * 
+   * @param amount - Refund amount in KOBO
+   */
+  async refundCheckoutOrder(params: {
+    transactionId: string;
+    amount: number;
+    accountNumber: string;
+    bankCode: string;
+  }): Promise<{ status: string }> {
+    const authHeaders = await this.getAuthHeaders();
+    const amountInNaira = (params.amount / 100).toFixed(2);
+
+    const response = await this.client.post(
+      `/v1/checkout/refund`,
+      {
+        transactionId: params.transactionId,
+        amount: amountInNaira,
+        accountNumber: params.accountNumber,
+        bankCode: params.bankCode,
+      },
+      { headers: authHeaders }
+    );
+
+    logger.info(
+      { transactionId: params.transactionId, amount: amountInNaira },
+      "Nomba checkout order refunded"
+    );
+
+    return { status: response.data.data?.status || "SUCCESS" };
+  }
+
+  // ============================================================
   // UTILITY — for testing and health checks
   // ============================================================
 
