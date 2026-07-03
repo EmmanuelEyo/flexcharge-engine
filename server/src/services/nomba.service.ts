@@ -119,28 +119,29 @@ class NombaService {
       },
     });
 
-    // Request interceptor: log outgoing requests
+    // Request interceptor: log outgoing requests and their payloads
     this.client.interceptors.request.use((config) => {
-      logger.debug(
+      logger.info(
         {
           method: config.method?.toUpperCase(),
           url: `${config.baseURL}${config.url}`,
+          data: config.data,
         },
-        "Nomba API request"
+        "Nomba API request payload"
       );
       return config;
     });
 
-    // Response interceptor: log responses
+    // Response interceptor: log responses and their payloads
     this.client.interceptors.response.use(
       (response) => {
-        logger.debug(
+        logger.info(
           {
             status: response.status,
             url: response.config.url,
-            code: response.data?.code,
+            data: response.data,
           },
-          "Nomba API response"
+          "Nomba API response payload"
         );
         return response;
       },
