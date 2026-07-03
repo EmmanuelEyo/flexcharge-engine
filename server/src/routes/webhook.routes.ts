@@ -150,13 +150,16 @@ router.post(
         try {
           const verification = await nombaService.verifyTransaction(orderReference);
 
-          if (verification.status !== "SUCCESS") {
+          if (
+            verification.status !== "SUCCESS" &&
+            verification.status !== "PENDING_BILLING"
+          ) {
             logger.warn(
               {
                 orderReference,
                 verificationStatus: verification.status,
               },
-              "Transaction verification returned non-SUCCESS status"
+              "Transaction verification returned invalid status"
             );
             return; // Reject unverified success webhooks
           }
