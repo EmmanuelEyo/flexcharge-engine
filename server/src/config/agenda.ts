@@ -10,6 +10,7 @@ import { defineDunningRetryJob, DUNNING_RETRY_JOB_NAME } from "../jobs/dunningRe
 import { defineWalletAutoTopupJob, WALLET_AUTO_TOPUP_JOB_NAME } from "../jobs/walletAutoTopup.js";
 import { defineSendEmailJob } from "../jobs/sendEmail.js";
 import { defineDailyAnalyticsJob, DAILY_ANALYTICS_JOB_NAME } from "../jobs/recordDailyAnalytics.js";
+import { defineCleanupPendingSubscriptionsJob, CLEANUP_PENDING_SUBS_JOB_NAME } from "../jobs/cleanupPendingSubscriptions.js";
 
 /**
  * Agenda configuration — MongoDB-backed job scheduler.
@@ -48,6 +49,7 @@ export function getAgenda(): Agenda {
     defineWalletAutoTopupJob(agenda);
     defineSendEmailJob(agenda);
     defineDailyAnalyticsJob(agenda);
+    defineCleanupPendingSubscriptionsJob(agenda);
 
     // Error handling
     agenda.on("error", (err) => {
@@ -106,6 +108,9 @@ export async function startAgenda(): Promise<void> {
 
   // Daily analytics snapshot generation at midnight (UTC)
   await agendaInstance.every("0 0 * * *", DAILY_ANALYTICS_JOB_NAME);
+
+  // Cleanup abandoned pending subscriptions every hour
+  await agendaInstance.every("1 hour", CLEANUP_PENDING_SUBS_JOB_NAME);
 
   logger.info("Agenda scheduler started with recurring jobs");
 }

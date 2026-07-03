@@ -182,6 +182,8 @@ export async function listSubscriptions(
 
     if (req.query.status) {
       filter.status = req.query.status;
+    } else {
+      filter.status = { $ne: "pending" };
     }
     if (req.query.customerId) {
       filter.customerId = req.query.customerId;
