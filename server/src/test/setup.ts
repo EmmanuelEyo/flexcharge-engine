@@ -1,5 +1,6 @@
 import { MongoMemoryServer } from "mongodb-memory-server";
 import mongoose from "mongoose";
+import { stopAgenda } from "../config/agenda.js";
 
 let mongoServer: MongoMemoryServer;
 
@@ -23,6 +24,7 @@ export async function setupTestDB(): Promise<void> {
  * Close database connection and stop the in-memory server.
  */
 export async function teardownTestDB(): Promise<void> {
+  await stopAgenda();
   await mongoose.disconnect();
   if (mongoServer) {
     await mongoServer.stop();
