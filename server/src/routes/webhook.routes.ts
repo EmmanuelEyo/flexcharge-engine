@@ -104,12 +104,11 @@ router.post(
         return;
       }
 
-      // Extract relevant data from Nomba webhook
-      // Nomba webhook structure varies; handle common shapes
+      // 1. Correct Webhook Extraction
       const orderReference =
+        payload?.data?.order?.orderReference ||
         payload?.data?.orderReference ||
-        payload?.orderReference ||
-        payload?.order?.orderReference;
+        payload?.orderReference;
 
       if (!orderReference) {
         logger.warn({ payload }, "Webhook missing orderReference — ignoring");
@@ -119,7 +118,8 @@ router.post(
       const paymentStatus =
         payload?.data?.status ||
         payload?.status ||
-        payload?.data?.paymentStatus;
+        payload?.data?.paymentStatus ||
+        (payload?.event_type === "payment_success" ? "SUCCESS" : undefined);
 
       logger.info(
         { orderReference, paymentStatus },
@@ -139,13 +139,70 @@ router.post(
         return;
       }
 
-      // Find subscription by checkout order reference
+      // 2. Global Transaction Verification (Security)
+      let verificationTokenizedCardData: {
+        tokenKey: string;
+        cardLast4: string;
+        cardBrand: string;
+      } | undefined;
+
+      if (nombaService.isConfigured()) {
+        try {
+          const verification = await nombaService.verifyTransaction(orderReference);
+
+          if (verification.status !== "SUCCESS") {
+            logger.warn(
+              {
+                orderReference,
+                verificationStatus: verification.status,
+              },
+              "Transaction verification returned non-SUCCESS status"
+            );
+            return; // Reject unverified success webhooks
+          }
+
+          verificationTokenizedCardData = verification.tokenizedCardData;
+        } catch (error) {
+          logger.error(
+            {
+              orderReference,
+              error: error instanceof Error ? error.message : "Unknown",
+            },
+            "Transaction verification failed — processing webhook data directly"
+          );
+        }
+      }
+
+      // 3. Extract Card Data & "N/A" Protection
+      let tokenizedCardData = verificationTokenizedCardData;
+      if (!tokenizedCardData) {
+        const rawCardData = payload?.data?.tokenizedCardData || payload?.tokenizedCardData;
+        if (rawCardData && rawCardData.tokenKey && rawCardData.tokenKey !== "N/A") {
+          tokenizedCardData = {
+            tokenKey: rawCardData.tokenKey,
+            cardLast4: rawCardData.cardPan && rawCardData.cardPan !== "N/A" ? rawCardData.cardPan.slice(-4) : "",
+            cardBrand: rawCardData.cardType && rawCardData.cardType !== "N/A" ? rawCardData.cardType : "",
+          };
+        }
+      } else {
+        // Even from verification, protect against N/A
+        if (tokenizedCardData.tokenKey === "N/A") {
+          tokenizedCardData = undefined;
+        }
+      }
+
+      const transactionId =
+        payload?.data?.transaction?.transactionId ||
+        payload?.data?.transactionId ||
+        payload?.transactionId;
+
+      // Find subscription by checkout order reference (Initial Checkout)
       const subscription = await Subscription.findOne({
         nombaCheckoutOrderRef: orderReference,
       }).populate("planId");
 
       if (!subscription) {
-        // Try finding by invoice order reference (for renewals)
+        // Try finding by invoice order reference (Manual Renewal)
         const invoice = await Invoice.findOne({
           nombaOrderReference: orderReference,
         });
@@ -159,8 +216,6 @@ router.post(
           // Mark invoice as paid
           invoice.status = "paid";
           invoice.paidAt = new Date();
-          
-          const transactionId = payload?.data?.transactionId || payload?.transactionId;
           if (transactionId) {
             invoice.nombaTransactionId = transactionId;
           }
@@ -169,6 +224,13 @@ router.post(
           // Update subscription
           const sub = await Subscription.findById(invoice.subscriptionId).populate("planId");
           if (sub) {
+            // Save tokenized card data if provided (captures new cards from manual payments)
+            if (tokenizedCardData?.tokenKey) {
+              sub.tokenKey = tokenizedCardData.tokenKey;
+              sub.cardLast4 = tokenizedCardData.cardLast4;
+              sub.cardBrand = tokenizedCardData.cardBrand;
+            }
+
             (sub as any)._previousStatus = sub.status;
             sub.status = "active";
 
@@ -193,6 +255,7 @@ router.post(
               subscriptionId: sub._id,
               invoiceId: invoice._id,
               recoveredViaManualPayment: true,
+              hasPaymentToken: !!sub.tokenKey,
             });
 
             // Send receipt email
@@ -222,6 +285,8 @@ router.post(
         return;
       }
 
+      // --- Process Initial Checkout ---
+
       // Only process if subscription is still pending
       if (subscription.status !== "pending") {
         logger.info(
@@ -232,59 +297,6 @@ router.post(
           "Subscription is not pending — webhook may be a duplicate"
         );
         return;
-      }
-
-      // Verify transaction via Nomba sub-account endpoint
-      // Per AGENTS.md §2.2
-      let tokenizedCardData: {
-        tokenKey: string;
-        cardLast4: string;
-        cardBrand: string;
-      } | undefined;
-
-      if (nombaService.isConfigured()) {
-        try {
-          const verification = await nombaService.verifyTransaction(orderReference);
-
-          if (verification.status !== "SUCCESS") {
-            logger.warn(
-              {
-                orderReference,
-                verificationStatus: verification.status,
-              },
-              "Transaction verification returned non-SUCCESS status"
-            );
-            return;
-          }
-
-          tokenizedCardData = verification.tokenizedCardData;
-        } catch (error) {
-          logger.error(
-            {
-              orderReference,
-              error: error instanceof Error ? error.message : "Unknown",
-            },
-            "Transaction verification failed — processing webhook data directly"
-          );
-        }
-      }
-
-      // Extract card token data from webhook payload if not from verification
-      if (!tokenizedCardData) {
-        tokenizedCardData = {
-          tokenKey:
-            payload?.data?.tokenizedCardData?.tokenKey ||
-            payload?.tokenizedCardData?.tokenKey ||
-            "",
-          cardLast4:
-            payload?.data?.tokenizedCardData?.cardLast4 ||
-            payload?.tokenizedCardData?.cardLast4 ||
-            "",
-          cardBrand:
-            payload?.data?.tokenizedCardData?.cardBrand ||
-            payload?.tokenizedCardData?.cardBrand ||
-            "",
-        };
       }
 
       // Save tokenized card data on subscription
@@ -322,8 +334,6 @@ router.post(
         invoice.paidAt = new Date();
         invoice.nombaOrderReference = orderReference;
 
-        const transactionId =
-          payload?.data?.transactionId || payload?.transactionId;
         if (transactionId) {
           invoice.nombaTransactionId = transactionId;
         }
