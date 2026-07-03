@@ -181,6 +181,9 @@ export async function getPublicPlan(
 ): Promise<void> {
   try {
     const identifier = req.params.id;
+    if (!identifier || typeof identifier !== "string") {
+      throw new Error("Plan identifier is required and must be a string");
+    }
 
     // Determine if the identifier is a valid MongoDB ObjectId or a slug string
     const isObjectId = Types.ObjectId.isValid(identifier) && identifier.length === 24;
