@@ -5,6 +5,7 @@ import { Invoice } from "../models/Invoice.js";
 import { nombaService } from "../services/nomba.service.js";
 import { queueWebhook } from "../services/webhook.service.js";
 import { calculateNextBillingDate } from "../services/billing.service.js";
+import { ledgerService } from "../services/ledger.service.js";
 import { logger } from "../utils/logger.js";
 import { INTERVAL_DAYS } from "../types/subscription.types.js";
 import type { PlanInterval } from "../types/subscription.types.js";
@@ -223,6 +224,9 @@ router.post(
             invoice.nombaTransactionId = transactionId;
           }
           await invoice.save();
+          
+          // Credit tenant ledger
+          await ledgerService.creditTenant(invoice.tenantId, invoice.amount, invoice._id.toString());
 
           // Update subscription
           const sub = await Subscription.findById(invoice.subscriptionId).populate("planId");
@@ -342,6 +346,9 @@ router.post(
         }
 
         await invoice.save();
+        
+        // Credit tenant ledger
+        await ledgerService.creditTenant(subscription.tenantId, invoice.amount, invoice._id.toString());
       }
 
       // Fire webhook: subscription.created

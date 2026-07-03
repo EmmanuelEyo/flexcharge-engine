@@ -12,8 +12,12 @@ import {
   calculateNextBillingDate,
   findDueSubscriptions,
   processRenewal,
+  sendUpcomingRenewalReminders,
 } from "../services/billing.service.js";
 import { nombaService } from "../services/nomba.service.js";
+import React from "react";
+import { renderToString } from "react-dom/server";
+import { WelcomeEmail } from "../emails/customer/WelcomeEmail.js";
 
 const originalChargeTokenizedCard = nombaService.chargeTokenizedCard;
 
@@ -244,5 +248,81 @@ test("Billing Service", async (t) => {
     } finally {
       nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
     }
+  });
+
+  await t.test("sends upcoming renewal reminders for manual subscriptions", async () => {
+    console.log("[BILLING][TEST] scanning upcoming manual renewal reminders");
+
+    const { tenant, customer, plan, subscription } = await seedRenewalFixture();
+
+    // Set subscription to manual renewal with next billing date in 2 days (within 3 days window)
+    subscription.renewalMode = "manual";
+    subscription.tokenKey = undefined;
+    subscription.nextBillingDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    await subscription.save();
+
+    // Mock createCheckoutOrder
+    let createCheckoutCalls = 0;
+    const originalCreateCheckoutOrder = nombaService.createCheckoutOrder;
+    nombaService.createCheckoutOrder = (async (params: any) => {
+      createCheckoutCalls += 1;
+      return {
+        orderReference: params.orderReference,
+        checkoutLink: "https://pay.nomba.com/checkout/mocked",
+      };
+    }) as any;
+
+    try {
+      // 1. Run the reminder scan
+      const count = await sendUpcomingRenewalReminders(3);
+      assert.strictEqual(count, 1);
+      assert.strictEqual(createCheckoutCalls, 1);
+
+      // Verify a pending invoice was created
+      const invoice = await Invoice.findOne({ subscriptionId: subscription._id });
+      assert.ok(invoice);
+      assert.strictEqual(invoice.status, "pending");
+      assert.strictEqual(invoice.checkoutLink, "https://pay.nomba.com/checkout/mocked");
+      assert.ok(invoice.nombaOrderReference);
+
+      // 2. Running the scan again should skip it (idempotency key prevents duplicate)
+      const countSecondRun = await sendUpcomingRenewalReminders(3);
+      assert.strictEqual(countSecondRun, 0);
+      assert.strictEqual(createCheckoutCalls, 1);
+    } finally {
+      nombaService.createCheckoutOrder = originalCreateCheckoutOrder;
+    }
+  });
+
+  await t.test("WelcomeEmail renders different copy depending on hasPaymentToken", () => {
+    console.log("[BILLING][TEST] rendering WelcomeEmail with and without payment token");
+
+    // Case 1: hasPaymentToken is true
+    const htmlWithToken = renderToString(
+      React.createElement(WelcomeEmail, {
+        customerName: "John Doe",
+        planName: "Pro Plan",
+        amount: "₦5,000.00",
+        interval: "month",
+        tenantName: "Acme Corp",
+        hasPaymentToken: true,
+      })
+    );
+    assert.ok(htmlWithToken.includes("Your card has been securely tokenized"));
+    assert.ok(!htmlWithToken.includes("Future renewals will require manual payment"));
+
+    // Case 2: hasPaymentToken is false
+    const htmlWithoutToken = renderToString(
+      React.createElement(WelcomeEmail, {
+        customerName: "John Doe",
+        planName: "Pro Plan",
+        amount: "₦5,000.00",
+        interval: "month",
+        tenantName: "Acme Corp",
+        hasPaymentToken: false,
+      })
+    );
+    assert.ok(!htmlWithoutToken.includes("Your card has been securely tokenized"));
+    assert.ok(htmlWithoutToken.includes("Future renewals will require manual payment"));
   });
 });
