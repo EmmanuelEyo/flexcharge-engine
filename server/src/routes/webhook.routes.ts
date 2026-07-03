@@ -10,6 +10,7 @@ import { INTERVAL_DAYS } from "../types/subscription.types.js";
 import type { PlanInterval } from "../types/subscription.types.js";
 import crypto from "node:crypto";
 import { env } from "../config/environment.js";
+import { queueEmail } from "../utils/emailDispatcher.js";
 
 const router = Router();
 
@@ -43,65 +44,52 @@ router.post(
     logger.info({ headers }, "Nomba webhook headers");
     logger.info({ rawBody: rawBody.substring(0, 2000) }, "Nomba webhook body");
 
-    // Signature Verification
-    // NOTE: Currently in "warn-but-continue" mode for debugging.
-    // Once confirmed working, change the `logger.warn` + `return` below
-    // back to `res.status(401).send("Unauthorized"); return;`
+    // Optional Signature Verification
     if (env.NOMBA_WEBHOOK_SECRET) {
-      const signature = (headers["nomba-signature"] || headers["nomba-sig-value"]) as string;
+      const signature = headers["nomba-signature"] as string;
       const timestamp = headers["nomba-timestamp"] as string;
 
       if (!signature || !timestamp) {
-        logger.warn(
-          { receivedHeaders: Object.keys(headers) },
-          "Webhook missing nomba-signature or nomba-timestamp headers — processing anyway for debugging"
-        );
-      } else {
-        let sigPayload: any;
-        try {
-          sigPayload = JSON.parse(rawBody);
-        } catch {
-          res.status(400).send("Invalid JSON");
-          return;
-        }
+        logger.warn("Webhook missing signature headers — rejecting");
+        res.status(401).send("Unauthorized");
+        return;
+      }
 
-        const eventType = sigPayload.event_type || "";
-        const requestId = sigPayload.requestId || "";
-        const data = sigPayload.data || {};
-        const merchant = data.merchant || {};
-        const transaction = data.transaction || {};
-        const userId = merchant.userId || "";
-        const walletId = merchant.walletId || "";
-        const transactionId = transaction.transactionId || "";
-        const transactionType = transaction.type || "";
-        const transactionTime = transaction.time || "";
-        let transactionResponseCode = transaction.responseCode || "";
-        if (transactionResponseCode === "null") {
-          transactionResponseCode = "";
-        }
+      let payload: any;
+      try {
+        payload = JSON.parse(rawBody);
+      } catch {
+        res.status(400).send("Invalid JSON");
+        return;
+      }
 
-        const hashingPayload = `${eventType}:${requestId}:${userId}:${walletId}:${transactionId}:${transactionType}:${transactionTime}:${transactionResponseCode}:${timestamp}`;
+      const eventType = payload.event_type || "";
+      const requestId = payload.requestId || "";
+      const data = payload.data || {};
+      const merchant = data.merchant || {};
+      const transaction = data.transaction || {};
+      const userId = merchant.userId || "";
+      const walletId = merchant.walletId || "";
+      const transactionId = transaction.transactionId || "";
+      const transactionType = transaction.type || "";
+      const transactionTime = transaction.time || "";
+      let transactionResponseCode = transaction.responseCode || "";
+      if (transactionResponseCode === "null") {
+        transactionResponseCode = "";
+      }
 
-        logger.info({ hashingPayload }, "Nomba signature hashing payload");
+      const hashingPayload = `${eventType}:${requestId}:${userId}:${walletId}:${transactionId}:${transactionType}:${transactionTime}:${transactionResponseCode}:${timestamp}`;
+      
+      const hmac = crypto.createHmac("sha256", env.NOMBA_WEBHOOK_SECRET);
+      hmac.update(hashingPayload);
+      const computedSignature = hmac.digest("base64");
 
-        const hmac = crypto.createHmac("sha256", env.NOMBA_WEBHOOK_SECRET);
-        hmac.update(hashingPayload);
-        const computedSignature = hmac.digest("base64");
-
-        if (signature !== computedSignature) {
-          logger.warn(
-            { expected: computedSignature, received: signature, hashingPayload },
-            "Webhook signature mismatch — processing anyway for debugging (TIGHTEN IN PRODUCTION)"
-          );
-          // TODO: In production, uncomment these two lines and remove the warning above:
-          // res.status(401).send("Unauthorized");
-          // return;
-        } else {
-          logger.info("Nomba webhook signature verified ✓");
-        }
+      if (signature !== computedSignature) {
+        logger.warn({ expected: computedSignature, received: signature }, "Webhook signature mismatch — rejecting");
+        res.status(401).send("Unauthorized");
+        return;
       }
     }
-
 
     // Immediately return 200 OK to acknowledge receipt after successful auth
     res.status(200).send("OK");
@@ -116,195 +104,274 @@ router.post(
         return;
       }
 
-      const eventType = payload?.event_type || "";
-      const data = payload?.data || {};
-      const transaction = data.transaction || {};
+      // 1. Correct Webhook Extraction
+      const orderReference =
+        payload?.data?.order?.orderReference ||
+        payload?.data?.orderReference ||
+        payload?.orderReference;
 
-      logger.info({ eventType }, "Processing Nomba webhook event");
+      if (!orderReference) {
+        logger.warn({ payload }, "Webhook missing orderReference — ignoring");
+        return;
+      }
 
-      // For payment_success, Nomba sends different fields depending on payment type:
-      // - Checkout/card payment: data.orderReference or data.transaction.orderReference
-      // - Virtual account transfer (vact_transfer): data.transaction.aliasAccountReference
-      // - Tokenized card charge: data.orderReference
-      // We try all candidates and match against nombaCheckoutOrderRef on subscription.
-      if (eventType === "payment_success") {
-        const orderRefCandidates = [
-          data.orderReference,               // checkout / tokenized card
-          transaction.orderReference,         // checkout in transaction object
-          transaction.aliasAccountReference,  // virtual account transfer
-          data.aliasAccountReference,         // fallback
-          transaction.transactionId,          // last resort
-          data.transactionId,
-        ].filter(Boolean) as string[];
+      const paymentStatus =
+        payload?.data?.status ||
+        payload?.status ||
+        payload?.data?.paymentStatus ||
+        (payload?.event_type === "payment_success" ? "SUCCESS" : undefined);
 
+      logger.info(
+        { orderReference, paymentStatus },
+        "Processing Nomba webhook event"
+      );
+
+      // Only process successful payments
+      if (
+        paymentStatus !== "SUCCESS" &&
+        paymentStatus !== "APPROVED" &&
+        paymentStatus !== "success"
+      ) {
         logger.info(
-          { orderRefCandidates, transactionType: transaction.type },
-          "payment_success — searching for matching subscription"
+          { orderReference, paymentStatus },
+          "Non-success payment status — no action needed"
         );
+        return;
+      }
 
-        // Find subscription by checkout order reference
-        const subscription = await Subscription.findOne({
-          nombaCheckoutOrderRef: { $in: orderRefCandidates },
-        }).populate("planId");
+      // 2. Global Transaction Verification (Security)
+      let verificationTokenizedCardData: {
+        tokenKey: string;
+        cardLast4: string;
+        cardBrand: string;
+      } | undefined;
 
-        if (!subscription) {
-          // Try finding by invoice order reference (for renewals)
-          const invoice = await Invoice.findOne({
-            $or: [
-              { nombaOrderReference: { $in: orderRefCandidates } },
-            ],
-          });
+      if (nombaService.isConfigured()) {
+        try {
+          const verification = await nombaService.verifyTransaction(orderReference);
 
-          if (invoice) {
-            logger.info(
-              { orderRefCandidates, invoiceId: invoice._id },
-              "Webhook matched an invoice — renewal payment processed externally"
-            );
-          } else {
+          if (
+            verification.status !== "SUCCESS" &&
+            verification.status !== "PENDING_BILLING"
+          ) {
             logger.warn(
-              { orderRefCandidates, payload },
-              "No subscription or invoice found for payment_success event — check nombaCheckoutOrderRef values in DB"
-            );
-          }
-          return;
-        }
-
-        // The reference used for this transaction
-        const orderReference = orderRefCandidates[0];
-
-        // Only process if subscription is still pending
-        if (subscription.status !== "pending") {
-          logger.info(
-            {
-              subscriptionId: subscription._id,
-              status: subscription.status,
-            },
-            "Subscription is not pending — webhook may be a duplicate"
-          );
-          return;
-        }
-
-        // Verify transaction via Nomba sub-account endpoint
-        // Per AGENTS.md §2.2
-        let tokenizedCardData: {
-          tokenKey: string;
-          cardLast4: string;
-          cardBrand: string;
-        } | undefined;
-
-        if (nombaService.isConfigured()) {
-          try {
-            const verification = await nombaService.verifyTransaction(orderReference);
-
-            if (verification.status !== "SUCCESS") {
-              logger.warn(
-                {
-                  orderReference,
-                  verificationStatus: verification.status,
-                },
-                "Transaction verification returned non-SUCCESS status"
-              );
-              return;
-            }
-
-            tokenizedCardData = verification.tokenizedCardData;
-          } catch (error) {
-            logger.error(
               {
                 orderReference,
-                error: error instanceof Error ? error.message : "Unknown",
+                verificationStatus: verification.status,
               },
-              "Transaction verification failed — processing webhook data directly"
+              "Transaction verification returned invalid status"
             );
+            return; // Reject unverified success webhooks
           }
-        }
 
-        // Extract card token data from webhook payload if not from verification
-        if (!tokenizedCardData) {
+          verificationTokenizedCardData = verification.tokenizedCardData;
+        } catch (error) {
+          logger.error(
+            {
+              orderReference,
+              error: error instanceof Error ? error.message : "Unknown",
+            },
+            "Transaction verification failed — processing webhook data directly"
+          );
+        }
+      }
+
+      // 3. Extract Card Data & "N/A" Protection
+      let tokenizedCardData = verificationTokenizedCardData;
+      if (!tokenizedCardData) {
+        const rawCardData = payload?.data?.tokenizedCardData || payload?.tokenizedCardData;
+        if (rawCardData && rawCardData.tokenKey && rawCardData.tokenKey !== "N/A") {
           tokenizedCardData = {
-            tokenKey:
-              payload?.data?.tokenizedCardData?.tokenKey ||
-              payload?.tokenizedCardData?.tokenKey ||
-              "",
-            cardLast4:
-              payload?.data?.tokenizedCardData?.cardLast4 ||
-              payload?.tokenizedCardData?.cardLast4 ||
-              "",
-            cardBrand:
-              payload?.data?.tokenizedCardData?.cardBrand ||
-              payload?.tokenizedCardData?.cardBrand ||
-              "",
+            tokenKey: rawCardData.tokenKey,
+            cardLast4: rawCardData.cardPan && rawCardData.cardPan !== "N/A" ? rawCardData.cardPan.slice(-4) : "",
+            cardBrand: rawCardData.cardType && rawCardData.cardType !== "N/A" ? rawCardData.cardType : "",
           };
         }
-
-        // Save tokenized card data on subscription
-        if (tokenizedCardData?.tokenKey) {
-          subscription.tokenKey = tokenizedCardData.tokenKey;
-          subscription.cardLast4 = tokenizedCardData.cardLast4;
-          subscription.cardBrand = tokenizedCardData.cardBrand;
+      } else {
+        // Even from verification, protect against N/A
+        if (tokenizedCardData.tokenKey === "N/A") {
+          tokenizedCardData = undefined;
         }
+      }
 
-        // Transition: pending → active
-        (subscription as any)._previousStatus = subscription.status;
-        subscription.status = "active";
+      const transactionId =
+        payload?.data?.transaction?.transactionId ||
+        payload?.data?.transactionId ||
+        payload?.transactionId;
 
-        // Set billing period dates
-        const plan = subscription.planId as any;
-        const now = new Date();
-        subscription.currentPeriodStart = now;
+      // Find subscription by checkout order reference (Initial Checkout)
+      const subscription = await Subscription.findOne({
+        nombaCheckoutOrderRef: orderReference,
+      }).populate("planId");
 
-        if (plan && plan.interval) {
-          const periodEnd = calculateNextBillingDate(now, plan.interval as PlanInterval);
-          subscription.currentPeriodEnd = periodEnd;
-          subscription.nextBillingDate = periodEnd;
-        }
-
-        await subscription.save();
-
-        // Update invoice: pending → paid
+      if (!subscription) {
+        // Try finding by invoice order reference (Manual Renewal)
         const invoice = await Invoice.findOne({
-          subscriptionId: subscription._id,
-          status: "pending",
+          nombaOrderReference: orderReference,
         });
 
-        if (invoice) {
+        if (invoice && invoice.status === "pending") {
+          logger.info(
+            { orderReference, invoiceId: invoice._id },
+            "Webhook matched a pending invoice — processing manual renewal payment"
+          );
+
+          // Mark invoice as paid
           invoice.status = "paid";
           invoice.paidAt = new Date();
-          invoice.nombaOrderReference = orderReference;
-
-          const nombaTransId =
-            transaction.transactionId ||
-            payload?.data?.transactionId ||
-            payload?.transactionId;
-          if (nombaTransId) {
-            invoice.nombaTransactionId = nombaTransId;
+          if (transactionId) {
+            invoice.nombaTransactionId = transactionId;
           }
-
           await invoice.save();
+
+          // Update subscription
+          const sub = await Subscription.findById(invoice.subscriptionId).populate("planId");
+          if (sub) {
+            // Save tokenized card data if provided (captures new cards from manual payments)
+            if (tokenizedCardData?.tokenKey) {
+              sub.tokenKey = tokenizedCardData.tokenKey;
+              sub.cardLast4 = tokenizedCardData.cardLast4;
+              sub.cardBrand = tokenizedCardData.cardBrand;
+            }
+
+            (sub as any)._previousStatus = sub.status;
+            sub.status = "active";
+
+            // Advance billing dates
+            const now = new Date();
+            const plan = sub.planId as any;
+            const newPeriodStart = sub.currentPeriodEnd || now;
+            const newPeriodEnd = calculateNextBillingDate(
+              newPeriodStart,
+              plan.interval as PlanInterval
+            );
+
+            sub.currentPeriodStart = newPeriodStart;
+            sub.currentPeriodEnd = newPeriodEnd;
+            sub.nextBillingDate = newPeriodEnd;
+            sub.dunningAttemptCount = 0;
+            sub.lastDunningAt = undefined;
+            await sub.save();
+
+            // Fire webhook
+            await queueWebhook(sub.tenantId, "subscription.renewed", {
+              subscriptionId: sub._id,
+              invoiceId: invoice._id,
+              recoveredViaManualPayment: true,
+              hasPaymentToken: !!sub.tokenKey,
+            });
+
+            // Send receipt email
+            await queueEmail("customer", "receipt", {
+              tenantId: sub.tenantId,
+              customerId: sub.customerId as any,
+              subscriptionId: sub._id,
+              invoiceId: invoice._id,
+            });
+
+            logger.info(
+              { subscriptionId: sub._id, invoiceId: invoice._id },
+              "Manual renewal payment processed successfully"
+            );
+          }
+        } else if (invoice) {
+          logger.info(
+            { orderReference, invoiceId: invoice._id },
+            "Webhook matched an invoice that is already paid or failed"
+          );
+        } else {
+          logger.warn(
+            { orderReference },
+            "No subscription or invoice found for order reference"
+          );
         }
+        return;
+      }
 
-        // Fire webhook: subscription.created
-        await queueWebhook(subscription.tenantId, "subscription.created", {
-          subscriptionId: subscription._id,
-          customerId: subscription.customerId,
-          planId: subscription.planId,
-          status: subscription.status,
-          currentPeriodStart: subscription.currentPeriodStart?.toISOString(),
-          currentPeriodEnd: subscription.currentPeriodEnd?.toISOString(),
-          hasPaymentToken: !!subscription.tokenKey,
-        });
+      // --- Process Initial Checkout ---
 
+      // Only process if subscription is still pending
+      if (subscription.status !== "pending") {
         logger.info(
           {
             subscriptionId: subscription._id,
-            hasToken: !!tokenizedCardData?.tokenKey,
-            periodEnd: subscription.currentPeriodEnd?.toISOString(),
+            status: subscription.status,
           },
-          "Subscription activated via Nomba webhook"
+          "Subscription is not pending — webhook may be a duplicate"
         );
-      } else {
-        logger.info({ eventType }, "Unhandled Nomba event type — ignoring");
+        return;
       }
+
+      // Save tokenized card data on subscription
+      if (tokenizedCardData?.tokenKey) {
+        subscription.tokenKey = tokenizedCardData.tokenKey;
+        subscription.cardLast4 = tokenizedCardData.cardLast4;
+        subscription.cardBrand = tokenizedCardData.cardBrand;
+      }
+
+      // Transition: pending → active
+      (subscription as any)._previousStatus = subscription.status;
+      subscription.status = "active";
+
+      // Set billing period dates
+      const plan = subscription.planId as any;
+      const now = new Date();
+      subscription.currentPeriodStart = now;
+
+      if (plan && plan.interval) {
+        const periodEnd = calculateNextBillingDate(now, plan.interval as PlanInterval);
+        subscription.currentPeriodEnd = periodEnd;
+        subscription.nextBillingDate = periodEnd;
+      }
+
+      await subscription.save();
+
+      // Update invoice: pending → paid
+      const invoice = await Invoice.findOne({
+        subscriptionId: subscription._id,
+        status: "pending",
+      });
+
+      if (invoice) {
+        invoice.status = "paid";
+        invoice.paidAt = new Date();
+        invoice.nombaOrderReference = orderReference;
+
+        if (transactionId) {
+          invoice.nombaTransactionId = transactionId;
+        }
+
+        await invoice.save();
+      }
+
+      // Fire webhook: subscription.created
+      await queueWebhook(subscription.tenantId, "subscription.created", {
+        subscriptionId: subscription._id,
+        customerId: subscription.customerId,
+        planId: subscription.planId,
+        status: subscription.status,
+        currentPeriodStart: subscription.currentPeriodStart?.toISOString(),
+        currentPeriodEnd: subscription.currentPeriodEnd?.toISOString(),
+        hasPaymentToken: !!subscription.tokenKey,
+      });
+
+      logger.info(
+        {
+          subscriptionId: subscription._id,
+          hasToken: !!tokenizedCardData?.tokenKey,
+          periodEnd: subscription.currentPeriodEnd?.toISOString(),
+        },
+        "Subscription activated via Nomba webhook"
+      );
+
+      // Queue email notifications: welcome (customer) + new_subscriber (tenant)
+      const emailContext = {
+        tenantId: subscription.tenantId,
+        customerId: subscription.customerId as any,
+        subscriptionId: subscription._id,
+      };
+      await queueEmail("customer", "welcome", emailContext);
+      await queueEmail("tenant", "new_subscriber", emailContext);
     } catch (error) {
       logger.error(
         {
@@ -316,6 +383,5 @@ router.post(
     }
   }
 );
-
 
 export default router;

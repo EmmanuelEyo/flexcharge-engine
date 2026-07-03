@@ -99,12 +99,23 @@ app.use("/webhooks", webhookRoutes);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// Log request payloads for non-GET requests (redacting sensitive fields automatically)
+app.use((req, _res, next) => {
+  if (req.method !== "GET" && req.body && Object.keys(req.body).length > 0) {
+    logger.info({ body: req.body }, `Request Payload: ${req.method} ${req.url}`);
+  }
+  next();
+});
+
 // ===== RATE LIMITING =====
 app.use("/api", apiLimiter);
 
 // ===== REQUEST LOGGING =====
 app.use((req, _res, next) => {
-  logger.debug(
+  // Prevent health checks from spamming the logs
+  if (req.url === "/health") return next();
+
+  logger.info(
     { method: req.method, url: req.url },
     "Incoming request"
   );

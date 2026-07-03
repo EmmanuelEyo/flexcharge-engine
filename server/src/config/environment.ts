@@ -44,6 +44,10 @@ const envSchema = z.object({
   NOMBA_ACCOUNT_ID: z.string().default("f666ef9b-888e-4799-85ce-acb505b28023"),
   NOMBA_SUB_ACCOUNT_ID: z.string().default("5102a72b-3dac-42d0-a549-3094ad0c36ea"),
   NOMBA_WEBHOOK_SECRET: z.string().optional().default("NombaHackathon2026"),
+
+  // Resend Email (optional — email notifications are disabled when not set)
+  RESEND_API_KEY: z.string().optional().default(""),
+  EMAIL_FROM: z.string().optional().default("FlexCharge <no-reply@loopdevs.int.yt>"),
 });
 
 const parsed = envSchema.safeParse(process.env);

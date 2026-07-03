@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert";
 import { nombaService } from "../services/nomba.service.js";
+import { env } from "../config/environment.js";
 
 const originalClient = (nombaService as any).client;
 const originalGetValidToken = (nombaService as any).getValidToken;
@@ -48,6 +49,7 @@ test("Nomba Service Payload Construction", async (t) => {
       assert.strictEqual(requests.length, 1);
       assert.strictEqual(requests[0]!.path, "/v1/checkout/order");
       assert.strictEqual(requests[0]!.body.order.amount, "1250.00");
+      assert.strictEqual(requests[0]!.body.order.accountId, env.NOMBA_SUB_ACCOUNT_ID);
       assert.strictEqual(requests[0]!.body.tokenizeCard, true);
       assert.strictEqual(requests[0]!.headers.Authorization, "Bearer cached-token");
       assert.strictEqual(result.checkoutLink, "https://sandbox.example/checkout");
@@ -93,6 +95,7 @@ test("Nomba Service Payload Construction", async (t) => {
       assert.strictEqual(requests[0]!.body.tokenKey, "tok_abc");
       assert.strictEqual(requests[0]!.body.order.amount, "2500.00");
       assert.strictEqual(requests[0]!.body.order.customerId, "cust_123");
+      assert.strictEqual(requests[0]!.body.order.accountId, env.NOMBA_SUB_ACCOUNT_ID);
       assert.strictEqual(result.status, "SUCCESS");
       assert.strictEqual(result.transactionId, "txn_123");
     } finally {

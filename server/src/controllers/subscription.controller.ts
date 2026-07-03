@@ -25,6 +25,7 @@ import { calculateProration } from "../utils/proration.js";
 import { Wallet } from "../models/Wallet.js";
 import { creditWallet, createWallet } from "../services/wallet.service.js";
 import { queueWebhook } from "../services/webhook.service.js";
+import { queueEmail } from "../utils/emailDispatcher.js";
 
 /**
  * Subscription Controller — Manages the full subscription lifecycle.
@@ -108,14 +109,17 @@ export async function createSubscription(
         const checkout = await nombaService.createCheckoutOrder({
           orderReference,
           amount: plan.amount, // KOBO — service converts to NGN
-          currency: plan.currency,
+          currency: plan.currency as "NGN" | "CDF" | "USD" | undefined,
           customerEmail: customer.email,
           callbackUrl: input.returnUrl || `${env.FRONTEND_URL || "http://localhost:3000"}/pay/success`,
           tokenizeCard: true,
         });
 
         checkoutLink = checkout.checkoutLink;
-        savedOrderRef = checkout.orderReference;
+        // BUG FIX: Do NOT overwrite `savedOrderRef` with `checkout.orderReference`!
+        // Nomba's API returns a generated UUID in the response, but sends back our original `orderReference` in the webhook.
+        // We must save our original reference so the webhook can find the subscription.
+        // savedOrderRef = checkout.orderReference; 
 
         // Update subscription with checkout details
         subscription.nombaCheckoutOrderRef = savedOrderRef;
@@ -274,6 +278,16 @@ export async function cancelSubscription(
     }
 
     sendSuccess(res, subscription);
+
+    // Queue cancel emails to customer and tenant (fire-and-forget after response)
+    const cancelCtx = {
+      tenantId: req.tenantId!,
+      customerId: subscription.customerId as any,
+      subscriptionId: subscription._id,
+      cancellationReason: input.cancellationReason,
+    };
+    queueEmail("customer", "cancel", cancelCtx);
+    queueEmail("tenant", "cancel", cancelCtx);
   } catch (error) {
     next(error);
   }
@@ -354,14 +368,17 @@ export async function publicCheckout(
         const checkout = await nombaService.createCheckoutOrder({
           orderReference,
           amount: plan.amount,
-          currency: plan.currency,
+          currency: plan.currency as "NGN" | "CDF" | "USD" | undefined,
           customerEmail: customer.email,
           callbackUrl: returnUrl || `${env.FRONTEND_URL || "http://localhost:3000"}/pay/success`,
           tokenizeCard: true,
         });
 
         checkoutLink = checkout.checkoutLink;
-        savedOrderRef = checkout.orderReference;
+        // BUG FIX: Do NOT overwrite `savedOrderRef` with `checkout.orderReference`!
+        // Nomba's API returns a generated UUID in the response, but sends back our original `orderReference` in the webhook.
+        // We must save our original reference so the webhook can find the subscription.
+        // savedOrderRef = checkout.orderReference;
 
         subscription.nombaCheckoutOrderRef = savedOrderRef;
         subscription.checkoutLink = checkoutLink;
