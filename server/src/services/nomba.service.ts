@@ -340,6 +340,7 @@ class NombaService {
           currency: params.currency || "NGN",
           customerEmail: params.customerEmail,
           callbackUrl: params.callbackUrl,
+          accountId: env.NOMBA_SUB_ACCOUNT_ID,
         },
         tokenizeCard: params.tokenizeCard ?? true,
       },
@@ -396,7 +397,7 @@ class NombaService {
           currency: params.currency || "NGN",
           customerEmail: params.customerEmail,
           customerId: params.customerId || params.orderReference,
-          accountId: env.NOMBA_ACCOUNT_ID,
+          accountId: env.NOMBA_SUB_ACCOUNT_ID,
         },
       },
       { headers: authHeaders }
