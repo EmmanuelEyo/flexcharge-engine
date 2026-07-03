@@ -63,7 +63,7 @@ export async function createPortalSession(
       { expiresIn: env.PORTAL_JWT_EXPIRES_IN as any }
     );
 
-    const portalUrl = `${env.API_BASE_URL}/portal?token=${portalToken}`;
+    const portalUrl = `${env.FRONTEND_URL}/portal?token=${portalToken}`;
 
     logger.info(
       {
