@@ -24,8 +24,6 @@ test("Analytics Service", async (t) => {
     // Create Tenant
     const tenant = await Tenant.create({
       name: "Analytics Test Tenant",
-      nombaSubAccountId: "test-sub-account",
-      apiKey: "test-api-key",
       email: "analytics@example.com",
       passwordHash: "hash"
     });
