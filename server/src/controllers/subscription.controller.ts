@@ -109,7 +109,7 @@ export async function createSubscription(
         const checkout = await nombaService.createCheckoutOrder({
           orderReference,
           amount: plan.amount, // KOBO — service converts to NGN
-          currency: plan.currency,
+          currency: plan.currency as "NGN" | "CDF" | "USD" | undefined,
           customerEmail: customer.email,
           callbackUrl: input.returnUrl || `${env.FRONTEND_URL || "http://localhost:3000"}/pay/success`,
           tokenizeCard: true,
@@ -365,7 +365,7 @@ export async function publicCheckout(
         const checkout = await nombaService.createCheckoutOrder({
           orderReference,
           amount: plan.amount,
-          currency: plan.currency,
+          currency: plan.currency as "NGN" | "CDF" | "USD" | undefined,
           customerEmail: customer.email,
           callbackUrl: returnUrl || `${env.FRONTEND_URL || "http://localhost:3000"}/pay/success`,
           tokenizeCard: true,
