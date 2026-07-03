@@ -1,5 +1,6 @@
 import { Agenda } from "agenda";
 import { MongoBackend } from "@agendajs/mongo-backend";
+import mongoose from "mongoose";
 import { env } from "./environment.js";
 import { logger } from "../utils/logger.js";
 import { defineWebhookJobs } from "../jobs/webhookDelivery.js";
@@ -22,9 +23,15 @@ let agenda: Agenda;
 
 export function getAgenda(): Agenda {
   if (!agenda) {
+    // Share Mongoose connection if active to avoid duplicate/unclosed client handles in tests/prod
+    const mongoBackendOptions =
+      mongoose.connection.readyState === 1 && mongoose.connection.db
+        ? { mongo: mongoose.connection.db }
+        : { address: env.MONGO_URL };
+
     agenda = new Agenda({
       backend: new MongoBackend({
-        address: env.MONGO_URL,
+        ...mongoBackendOptions,
         collection: "agendaJobs",
       }),
       processEvery: "30 seconds",
@@ -104,6 +111,7 @@ export async function startAgenda(): Promise<void> {
 export async function stopAgenda(): Promise<void> {
   if (agenda) {
     await agenda.stop();
+    agenda = undefined as any;
     logger.info("Agenda scheduler stopped");
   }
 }
