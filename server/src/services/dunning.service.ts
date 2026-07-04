@@ -6,6 +6,7 @@ import { nombaService } from "./nomba.service.js";
 import { queueWebhook } from "./webhook.service.js";
 import { logger } from "../utils/logger.js";
 import { calculateNextBillingDate } from "./billing.service.js";
+import { env } from "../config/environment.js";
 import { classifyDeclineCode } from "../config/declineCodeMap.js";
 import { queueEmail } from "../utils/emailDispatcher.js";
 import type { PlanInterval } from "../types/subscription.types.js";
@@ -237,15 +238,13 @@ export async function processDunningRetry(
       tokenKey: subscription.tokenKey!,
       orderReference,
       amount: plan.amount,
-      currency: plan.currency || "NGN",
+      currency: plan.currency as "NGN" | "CDF" | "USD" | undefined,
       customerEmail: customer.email,
       customerId: customer._id.toString(),
+      callbackUrl: `${env.FRONTEND_URL}/billing/dunning?ref=${orderReference}`,
     });
 
-    if (
-      chargeResult.status === "SUCCESS" ||
-      chargeResult.status === "APPROVED"
-    ) {
+    if (chargeResult.success) {
       // === DUNNING SUCCESS ===
       attempt.status = "succeeded";
       await attempt.save();
@@ -253,7 +252,7 @@ export async function processDunningRetry(
       // Update invoice
       invoice.status = "paid";
       invoice.paidAt = new Date();
-      invoice.nombaTransactionId = chargeResult.transactionId;
+      invoice.nombaTransactionId = orderReference;
       await invoice.save();
 
       // Reset subscription to active
@@ -293,7 +292,8 @@ export async function processDunningRetry(
       return { success: true };
     } else {
       // === DUNNING FAILED ===
-      const declineCode = chargeResult.declineCode;
+      // Nomba tokenized card endpoint doesn't return a granular decline code
+      const declineCode: string | undefined = undefined;
       const classification = declineCode
         ? classifyDeclineCode(declineCode)
         : null;

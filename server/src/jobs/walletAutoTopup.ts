@@ -86,16 +86,16 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
             tokenKey: subscription.tokenKey,
             orderReference,
             amount,
-            currency: wallet.currency,
+            currency: wallet.currency as "NGN" | "CDF" | "USD" | undefined,
             customerEmail: customer.email,
             customerId: customer._id.toString(),
           });
 
-          if (chargeResult.status === "SUCCESS" || chargeResult.status === "APPROVED") {
+          if (chargeResult.success) {
             // Update invoice
             invoice.status = "paid";
             invoice.paidAt = new Date();
-            invoice.nombaTransactionId = chargeResult.transactionId;
+            invoice.nombaTransactionId = orderReference;
             await invoice.save();
 
             // Credit wallet
