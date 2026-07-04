@@ -15,11 +15,15 @@ import { DunningEmail } from "../emails/customer/DunningEmail.js";
 import { CancelEmail } from "../emails/customer/CancelEmail.js";
 import { ManualInvoiceEmail } from "../emails/customer/ManualInvoiceEmail.js";
 import { ManualInvoiceReminderEmail } from "../emails/customer/ManualInvoiceReminderEmail.js";
+import { RefundProcessedEmail } from "../emails/customer/RefundProcessedEmail.js";
 
 // Tenant templates
 import { TenantNewSubscriberEmail } from "../emails/tenant/TenantNewSubscriberEmail.js";
 import { TenantPaymentFailedEmail } from "../emails/tenant/TenantPaymentFailedEmail.js";
 import { TenantCancelEmail } from "../emails/tenant/TenantCancelEmail.js";
+import { WithdrawalSuccessfulEmail } from "../emails/tenant/WithdrawalSuccessfulEmail.js";
+import { WithdrawalFailedEmail } from "../emails/tenant/WithdrawalFailedEmail.js";
+import { RefundDeductedEmail } from "../emails/tenant/RefundDeductedEmail.js";
 
 import React from "react";
 
@@ -32,7 +36,7 @@ interface EmailJobPayload {
   /** Who receives the email: the customer or the tenant/developer. */
   recipientType: "customer" | "tenant";
   /** The type of email to send. */
-  type: "welcome" | "receipt" | "dunning" | "cancel" | "new_subscriber" | "payment_failed" | "manual_invoice" | "manual_invoice_reminder";
+  type: "welcome" | "receipt" | "dunning" | "cancel" | "new_subscriber" | "payment_failed" | "manual_invoice" | "manual_invoice_reminder" | "refund_processed" | "withdrawal_successful" | "withdrawal_failed" | "refund_deducted";
   /** Database IDs used to look up the records at dispatch time. */
   tenantId: string;
   customerId?: string;
@@ -130,6 +134,7 @@ export function defineSendEmailJob(agenda: Agenda): void {
               amount: formatKobo(plan?.amount || 0, plan?.currency),
               interval: plan?.interval || "month",
               tenantName: tenant.name,
+              hasPaymentToken: !!subscription?.tokenKey,
             });
             break;
 
@@ -195,6 +200,15 @@ export function defineSendEmailJob(agenda: Agenda): void {
             });
             break;
 
+          case "refund_processed":
+            subject = `Refund processed for Invoice ${invoice?._id?.toString() || "—"}`;
+            element = React.createElement(RefundProcessedEmail, {
+              customerName: customer?.name || "there",
+              tenantName: tenant.name,
+              invoiceId: invoice?._id?.toString() || "—",
+            });
+            break;
+
           default:
             logger.warn({ type: data.type }, "Unknown customer email type");
             return;
@@ -235,6 +249,30 @@ export function defineSendEmailJob(agenda: Agenda): void {
               customerEmail: customer?.email || "—",
               planName: plan?.name || "Subscription",
               reason: data.cancellationReason,
+            });
+            break;
+
+          case "withdrawal_successful":
+            subject = `Withdrawal successful: ${data.failureReason} has been processed`;
+            element = React.createElement(WithdrawalSuccessfulEmail, {
+              tenantName: tenant.name,
+              amount: formatKobo(parseInt(data.failureReason || "0"), "NGN"), // Using failureReason as amount for now
+            });
+            break;
+
+          case "withdrawal_failed":
+            subject = `⚠️ Withdrawal failed`;
+            element = React.createElement(WithdrawalFailedEmail, {
+              tenantName: tenant.name,
+              reason: data.failureReason || "Unknown error",
+            });
+            break;
+
+          case "refund_deducted":
+            subject = `Refund processed: Invoice ${invoice?._id?.toString() || "—"}`;
+            element = React.createElement(RefundDeductedEmail, {
+              tenantName: tenant.name,
+              invoiceId: invoice?._id?.toString() || "—",
             });
             break;
 

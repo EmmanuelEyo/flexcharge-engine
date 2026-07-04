@@ -17,6 +17,7 @@ interface WelcomeEmailProps {
   amount: string;
   interval: string;
   tenantName: string;
+  hasPaymentToken?: boolean;
 }
 
 /**
@@ -29,6 +30,7 @@ export function WelcomeEmail({
   amount,
   interval,
   tenantName,
+  hasPaymentToken,
 }: WelcomeEmailProps) {
   return (
     <Html lang="en">
@@ -59,10 +61,17 @@ export function WelcomeEmail({
               </Text>
             </Section>
 
-            <Text style={textStyle}>
-              Your card has been securely tokenized. Future charges will be
-              processed automatically — no action needed from you.
-            </Text>
+            {hasPaymentToken ? (
+              <Text style={textStyle}>
+                Your card has been securely tokenized. Future charges will be
+                processed automatically — no action needed from you.
+              </Text>
+            ) : (
+              <Text style={textStyle}>
+                Future renewals will require manual payment. You will receive an invoice
+                email with a payment link before each billing cycle.
+              </Text>
+            )}
           </Section>
 
           <Section style={footerStyle}>

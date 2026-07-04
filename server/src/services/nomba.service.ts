@@ -46,6 +46,32 @@ interface NombaCheckoutOrderResponse {
   };
 }
 
+/**
+ * Response shape for GET /v1/checkout/order/{orderReference}
+ * Matches the Nomba API spec exactly.
+ */
+interface NombaCheckoutOrderDetailsResponse {
+  code: string;
+  description: string;
+  data: {
+    order: {
+      orderId: string;
+      orderReference: string;
+      customerId: string;
+      accountId: string;
+      callbackUrl: string;
+      customerEmail: string;
+      amount: string;         // Decimal string e.g. "10000.00"
+      currency: string;       // "NGN"
+      businessName: string;
+      businessEmail: string;
+      businessLogo: string;
+    };
+    hasSavedCards: boolean;
+    base64EncodedRsaPublicKey: string;
+  };
+}
+
 interface NombaTokenizedChargeResponse {
   code: string;
   description: string;
@@ -434,6 +460,71 @@ class NombaService {
   }
 
   // ============================================================
+  // GET CHECKOUT ORDER DETAILS
+  // Per Nomba API: GET /v1/checkout/order/{orderReference}
+  // ============================================================
+
+  /**
+   * Fetch a single checkout order by its orderReference.
+   *
+   * Used to:
+   * 1. Verify order status from the FlexCharge invoice dashboard
+   * 2. Surface Nomba business/customer metadata alongside our invoice record
+   * 3. Expose hasSavedCards & RSA public key for advanced card-on-file flows
+   *
+   * @param orderReference - The Nomba-generated order reference UUID
+   */
+  async getCheckoutOrder(orderReference: string): Promise<{
+    order: {
+      orderId: string;
+      orderReference: string;
+      customerId: string;
+      accountId: string;
+      callbackUrl: string;
+      customerEmail: string;
+      amount: string;
+      currency: string;
+      businessName: string;
+      businessEmail: string;
+      businessLogo: string;
+    };
+    hasSavedCards: boolean;
+    base64EncodedRsaPublicKey: string;
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.get<NombaCheckoutOrderDetailsResponse>(
+      `/v1/checkout/order/${encodeURIComponent(orderReference)}`,
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba getCheckoutOrder failed [${code}]: ${description}`
+      );
+    }
+
+    logger.info(
+      {
+        orderReference,
+        orderId: data.order.orderId,
+        amount: data.order.amount,
+        currency: data.order.currency,
+        hasSavedCards: data.hasSavedCards,
+      },
+      "Nomba checkout order details fetched"
+    );
+
+    return {
+      order: data.order,
+      hasSavedCards: data.hasSavedCards,
+      base64EncodedRsaPublicKey: data.base64EncodedRsaPublicKey,
+    };
+  }
+
+  // ============================================================
   // TOKENIZED CARD CHARGE (Recurring Billing)
   // Per AGENTS.md §2.1: POST /v1/checkout/tokenized-card-payment
   // ============================================================
@@ -543,6 +634,103 @@ class NombaService {
       transactionRef: response.data.data.transactionRef,
       tokenizedCardData: response.data.data.tokenizedCardData,
     };
+  }
+
+  // ============================================================
+  // TRANSFERS & REFUNDS (Ledger / Withdrawal)
+  // ============================================================
+
+  /**
+   * Verify a bank account's name before a transfer.
+   * POST /v1/transfers/bank/lookup
+   */
+  async lookupBankAccount(bankCode: string, accountNumber: string): Promise<{ accountName: string }> {
+    const authHeaders = await this.getAuthHeaders();
+    const response = await this.client.post(
+      `/v1/transfers/bank/lookup`,
+      { bankCode, accountNumber },
+      { headers: authHeaders }
+    );
+    
+    logger.info({ bankCode, accountNumber }, "Nomba bank account lookup completed");
+    return { accountName: response.data.data.accountName };
+  }
+
+  /**
+   * Initiate a payout from our Nomba master account.
+   * POST /v2/transfers/bank
+   * 
+   * @param amount - Transfer amount in KOBO
+   */
+  async transferToBank(params: {
+    amount: number;
+    bankCode: string;
+    accountNumber: string;
+    accountName: string;
+    merchantTxRef: string;
+    senderName: string;
+    narration: string;
+  }): Promise<{ status: string; transferId: string }> {
+    const authHeaders = await this.getAuthHeaders();
+    const amountInNaira = (params.amount / 100).toFixed(2);
+
+    const response = await this.client.post(
+      `/v2/transfers/bank`,
+      {
+        amount: amountInNaira,
+        accountNumber: params.accountNumber,
+        accountName: params.accountName,
+        bankCode: params.bankCode,
+        merchantTxRef: params.merchantTxRef,
+        senderName: params.senderName,
+        narration: params.narration,
+      },
+      { headers: authHeaders }
+    );
+
+    logger.info(
+      { merchantTxRef: params.merchantTxRef, amount: amountInNaira, accountNumber: params.accountNumber },
+      "Nomba bank transfer initiated"
+    );
+
+    return {
+      status: response.data.data?.status || "SUCCESS",
+      transferId: response.data.data?.id || params.merchantTxRef,
+    };
+  }
+
+  /**
+   * Refund a completed checkout transaction.
+   * POST /v1/checkout/refund
+   * 
+   * @param amount - Refund amount in KOBO
+   */
+  async refundCheckoutOrder(params: {
+    transactionId: string;
+    amount: number;
+    accountNumber: string;
+    bankCode: string;
+  }): Promise<{ status: string }> {
+    const authHeaders = await this.getAuthHeaders();
+    const amountInNaira = (params.amount / 100).toFixed(2);
+
+    const response = await this.client.post(
+      `/v1/checkout/refund`,
+      {
+        transactionId: params.transactionId,
+        amount: amountInNaira,
+        accountNumber: params.accountNumber,
+        bankCode: params.bankCode,
+      },
+      { headers: authHeaders }
+    );
+
+    logger.info(
+      { transactionId: params.transactionId, amount: amountInNaira },
+      "Nomba checkout order refunded"
+    );
+
+    return { status: response.data.data?.status || "SUCCESS" };
   }
 
   // ============================================================

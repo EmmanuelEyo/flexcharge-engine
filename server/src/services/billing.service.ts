@@ -411,3 +411,110 @@ export async function processCancelAtPeriodEnd(): Promise<number> {
 
   return canceledCount;
 }
+
+/**
+ * Scan for active manual subscriptions that are due for renewal in the next 3 days,
+ * generate a pending invoice and a Nomba checkout link, and email them a reminder.
+ */
+export async function sendUpcomingRenewalReminders(daysAhead: number = 3): Promise<number> {
+  const now = new Date();
+  const reminderThreshold = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+
+  // Find active manual subscriptions due within next N days
+  const subscriptions = await Subscription.find({
+    status: "active",
+    $or: [
+      { renewalMode: "manual" },
+      { tokenKey: { $in: [null, undefined, ""] } }
+    ],
+    nextBillingDate: { $lte: reminderThreshold },
+    cancelAtPeriodEnd: { $ne: true },
+  }).populate("planId").populate("customerId");
+
+  let reminderCount = 0;
+
+  for (const subscription of subscriptions) {
+    const plan = subscription.planId as any;
+    const customer = subscription.customerId as any;
+
+    if (!plan || !customer) {
+      continue;
+    }
+
+    const periodEndStr = subscription.currentPeriodEnd
+      ? subscription.currentPeriodEnd.toISOString().split("T")[0]
+      : new Date().toISOString().split("T")[0];
+    const idempotencyKey = `bill_${subscription._id}_${periodEndStr}`;
+
+    // Check if an invoice was already generated for this cycle
+    const existingInvoice = await Invoice.findOne({ idempotencyKey });
+    if (existingInvoice) {
+      continue;
+    }
+
+    const orderReference = `inv_${subscription._id}_${Date.now()}`;
+
+    // Create a pending invoice ahead of time
+    const invoice = await Invoice.create({
+      tenantId: subscription.tenantId,
+      subscriptionId: subscription._id,
+      customerId: customer._id,
+      amount: plan.amount,
+      currency: plan.currency || "NGN",
+      status: "pending",
+      nombaOrderReference: orderReference,
+      description: `${plan.name} — Renewal (Upcoming)`,
+      isRenewal: true,
+      idempotencyKey,
+    });
+
+    if (nombaService.isConfigured()) {
+      try {
+        const checkoutResult = await nombaService.createCheckoutOrder({
+          orderReference,
+          amount: plan.amount,
+          currency: plan.currency || "NGN",
+          customerEmail: customer.email,
+          callbackUrl: `${env.FRONTEND_URL || "http://localhost:3000"}/success?orderRef=${orderReference}`,
+          tokenizeCard: false,
+        });
+
+        invoice.checkoutLink = checkoutResult.checkoutLink;
+        await invoice.save();
+
+        // Send upcoming manual invoice notification
+        await queueEmail("customer", "manual_invoice", {
+          tenantId: subscription.tenantId,
+          customerId: customer._id,
+          subscriptionId: subscription._id,
+          invoiceId: invoice._id,
+        });
+
+        logger.info(
+          { subscriptionId: subscription._id, invoiceId: invoice._id },
+          "Sent upcoming renewal reminder for manual subscription"
+        );
+        reminderCount++;
+      } catch (error) {
+        logger.error(
+          {
+            subscriptionId: subscription._id,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Failed to create Nomba checkout order for upcoming renewal"
+        );
+        // Delete the created invoice so we can retry on next scan
+        await Invoice.deleteOne({ _id: invoice._id });
+      }
+    } else {
+      logger.warn(
+        { subscriptionId: subscription._id },
+        "Nomba service not configured — skipping checkout link creation for upcoming manual renewal"
+      );
+      reminderCount++;
+    }
+  }
+
+  return reminderCount;
+}
+

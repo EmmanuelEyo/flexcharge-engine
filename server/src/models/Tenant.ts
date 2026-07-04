@@ -21,6 +21,11 @@ export interface ITenant extends Document {
   webhookUrl?: string;
   webhookSecret: string;
   isActive: boolean;
+  settlementAccount?: {
+    bankCode: string;
+    accountNumber: string;
+    accountName: string;
+  };
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
   createdAt: Date;
@@ -59,6 +64,11 @@ const tenantSchema = new Schema<ITenant>(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    settlementAccount: {
+      bankCode: { type: String, trim: true },
+      accountNumber: { type: String, trim: true },
+      accountName: { type: String, trim: true },
     },
     resetPasswordToken: {
       type: String,
