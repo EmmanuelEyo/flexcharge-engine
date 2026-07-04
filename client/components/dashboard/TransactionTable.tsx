@@ -105,6 +105,69 @@ export default function TransactionTable({
   const isFirstPage = page === 1;
   const isLastPage = to >= totalEntries;
 
+  const handlePrintInvoice = (tx: Transaction) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const html = `
+      <html>
+        <head>
+          <title>Invoice - ${tx.id}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #0f172a; max-width: 600px; margin: 0 auto; line-height: 1.5; }
+            h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; color: #0f172a; }
+            .meta { color: #64748b; font-size: 14px; margin-bottom: 32px; }
+            .meta p { margin: 4px 0; }
+            .row { display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding: 16px 0; font-size: 15px; }
+            .row:last-child { border-bottom: none; }
+            .total { font-weight: 600; font-size: 18px; margin-top: 16px; border-top: 2px solid #e2e8f0; border-bottom: none; }
+            .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; text-transform: capitalize; }
+            .badge-paid { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+            .badge-pending { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+            .badge-failed { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+            .footer { margin-top: 48px; text-align: center; color: #94a3b8; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <h1>FlexCharge Invoice</h1>
+          <div class="meta">
+            <p>Invoice ID: ${tx.id}</p>
+            <p>Date: ${tx.date}</p>
+            <p>Billed to: ${tx.customer}</p>
+          </div>
+          
+          <div class="row">
+            <span style="color: #64748b">Plan</span>
+            <span>${tx.plan}</span>
+          </div>
+
+          <div class="row">
+            <span style="color: #64748b">Status</span>
+            <span class="badge badge-${tx.status.toLowerCase()}">${tx.status}</span>
+          </div>
+          
+          <div class="row total">
+            <span>Total Amount Billed</span>
+            <span>${tx.amount}</span>
+          </div>
+          
+          <div class="footer">
+            <p>FlexCharge Billing Engine</p>
+          </div>
+          
+          <script>
+            window.onload = () => {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
@@ -144,10 +207,15 @@ export default function TransactionTable({
                   </td>
                   <td className="py-4 px-6 text-slate-500">{tx.date}</td>
                   <td className="py-4 px-6 text-right">
-                    <button className="text-slate-400 hover:text-[#4F46E5] transition-colors p-1 rounded-full hover:bg-indigo-50 opacity-0 group-hover:opacity-100 focus:opacity-100">
-                      <span className="material-symbols-outlined text-[20px] leading-none">
-                        more_vert
+                    <button 
+                      onClick={() => handlePrintInvoice(tx)}
+                      className="text-slate-400 hover:text-[#4F46E5] transition-colors p-1.5 rounded-lg hover:bg-indigo-50 opacity-0 group-hover:opacity-100 focus:opacity-100 flex items-center gap-1.5 ml-auto"
+                      title="See Invoice"
+                    >
+                      <span className="material-symbols-outlined text-[18px] leading-none">
+                        receipt
                       </span>
+                      <span className="text-xs font-medium hidden md:inline">See Invoice</span>
                     </button>
                   </td>
                 </tr>

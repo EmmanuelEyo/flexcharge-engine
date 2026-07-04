@@ -14,7 +14,7 @@ export default function DashboardPage() {
     activeSubscribers: 0,
     churnRate: 0,
   });
-  const [historicalData, setHistoricalData] = useState([]);
+  const [historicalData, setHistoricalData] = useState<any[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [txPage, setTxPage] = useState(1);
   const ITEMS_PER_PAGE = 5;
@@ -108,25 +108,56 @@ export default function DashboardPage() {
     fetchData();
   }, [fetchData]);
 
+  const getTrend = (current: number, past: number, isChurn = false) => {
+    if (!past) return { trend: "neutral" as const, change: undefined };
+    const diff = current - past;
+    let pct = isChurn ? diff : (diff / past) * 100;
+    
+    // For churn, going down is good (up trend in positivity), going up is bad.
+    // Wait, the UI considers 'up' arrow as positive (green) and 'down' arrow as negative (red).
+    // For Churn Rate, if diff < 0 (churn dropped), it's a good thing, so we might want a green down arrow?
+    // Let's just use 'up' for increase and 'down' for decrease, and let the user decide.
+    // Actually, StatCard colors "up" as emerald and "down" as red.
+    // For churn, if it goes down, we want emerald, but the arrow would point up if we pass "up".
+    // Let's keep it simple: "up" is positive growth, "down" is negative growth.
+    // If churn is lower, it's a positive trend.
+    const isPositive = isChurn ? diff < 0 : diff > 0;
+    const isNeutral = diff === 0;
+    
+    const formattedChange = Math.abs(pct).toFixed(1) + (isChurn ? "%" : "%");
+    
+    return {
+      trend: isNeutral ? "neutral" as const : isPositive ? "up" as const : "down" as const,
+      change: isNeutral ? undefined : formattedChange,
+    };
+  };
+
+  const mrrTrend = getTrend(metrics.mrr, historicalData[0]?.mrr);
+  const subsTrend = getTrend(metrics.activeSubscribers, historicalData[0]?.activeSubscribers);
+  const churnTrend = getTrend(metrics.churnRate, historicalData[0]?.churnRate, true);
+
   const stats = [
     {
       label: "Monthly Recurring Revenue",
       value: loading ? "..." : formatCurrency(metrics.mrr),
-      trend: "up" as const,
+      trend: mrrTrend.trend,
+      change: mrrTrend.change,
       icon: "account_balance_wallet",
       iconColor: "bg-emerald-50 text-emerald-600",
     },
     {
       label: "Active Subscribers",
       value: loading ? "..." : metrics.activeSubscribers.toLocaleString(),
-      trend: "up" as const,
+      trend: subsTrend.trend,
+      change: subsTrend.change,
       icon: "group",
       iconColor: "bg-blue-50 text-blue-600",
     },
     {
       label: "Churn Rate",
       value: loading ? "..." : `${metrics.churnRate}%`,
-      trend: "down" as const,
+      trend: churnTrend.trend,
+      change: churnTrend.change,
       icon: "trending_down",
       iconColor: "bg-purple-50 text-purple-600",
     },
@@ -164,7 +195,8 @@ export default function DashboardPage() {
             key={stat.label} 
             label={stat.label} 
             value={stat.value} 
-            trend={stat.trend} 
+            trend={stat.trend}
+            change={stat.change}
             icon={stat.icon} 
             iconColor={stat.iconColor} 
           />
