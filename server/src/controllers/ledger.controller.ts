@@ -165,7 +165,7 @@ export async function processRefund(req: Request, res: Response): Promise<void> 
     }
 
     await ledgerService.processRefund(
-      tenantId,
+      tenantId!,
       invoiceId,
       invoice.nombaTransactionId,
       invoice.amount,

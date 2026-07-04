@@ -202,3 +202,160 @@ export async function getOrderDetails(
     next(error);
   }
 }
+/**
+ * GET /invoices/checkout-transaction
+ * Fetch live checkout transaction details from Nomba.
+ *
+ * Wraps: GET https://api.nomba.com/v1/checkout/transaction
+ *
+ * Query Parameters:
+ *   - idType: "ORDER_REFERENCE" (default) | "ORDER_ID"
+ *   - id: the corresponding value
+ *
+ * Flow:
+ * 1. Validate that idType and id are provided
+ * 2. Tenant ownership check — look up the local Invoice by the provided id
+ *    (prevents cross-tenant data leakage to Nomba)
+ * 3. Call Nomba GET /v1/checkout/transaction with idType + id params
+ * 4. Return a merged payload combining local invoice state with Nomba's rich
+ *    transaction breakdown (order info, cardDetails, transferDetails,
+ *    transactionDetails with tokenization status)
+ *
+ * This is DISTINCT from verifyTransaction which queries the Transactions ledger
+ * API (/v1/transactions/accounts/{subAccountId}/single) used for internal
+ * billing engine reconciliation.
+ */
+export async function fetchCheckoutTransaction(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    // === STEP 1: Validate query params ===
+    const rawIdType = req.query["idType"] as string | undefined;
+    const id = req.query["id"] as string | undefined;
+
+    if (!id) {
+      res.status(400).json({
+        success: false,
+        error: "Query parameter 'id' is required.",
+      });
+      return;
+    }
+
+    // Default to ORDER_REFERENCE per Nomba docs (most common use case)
+    const idType: "ORDER_ID" | "ORDER_REFERENCE" =
+      rawIdType === "ORDER_ID" ? "ORDER_ID" : "ORDER_REFERENCE";
+
+    // === STEP 2: Tenant ownership check ===
+    // Build the lookup filter based on what kind of id was provided so we
+    // scope the Nomba request to this tenant's data only.
+    const ownershipFilter =
+      idType === "ORDER_ID"
+        ? { nombaTransactionId: id }   // ORDER_ID maps to the Nomba-generated orderId
+        : { nombaOrderReference: id }; // ORDER_REFERENCE is the merchant-supplied ref
+
+    const invoice = await Invoice.findOne({
+      ...tenantFilter(req),
+      ...ownershipFilter,
+    })
+      .populate("subscriptionId", "status planId nextBillingDate")
+      .populate("customerId", "email name");
+
+    if (!invoice) {
+      throw new NotFoundError(
+        `No invoice found for ${idType} '${id}' in this tenant account`
+      );
+    }
+
+    // === STEP 3: Fetch live transaction from Nomba ===
+    if (!nombaService.isConfigured()) {
+      logger.warn(
+        { id, idType },
+        "Nomba not configured — returning local invoice data only"
+      );
+      sendSuccess(res, {
+        invoice,
+        checkoutTransaction: null,
+        warning: "Nomba integration not configured. Showing local invoice data only.",
+      });
+      return;
+    }
+
+    let checkoutTransaction: Awaited<
+      ReturnType<typeof nombaService.fetchCheckoutTransaction>
+    > | null = null;
+
+    try {
+      checkoutTransaction = await nombaService.fetchCheckoutTransaction(id, idType);
+    } catch (nombaError) {
+      const nombaErrMsg =
+        nombaError instanceof Error ? nombaError.message : "Nomba API error";
+
+      logger.warn(
+        { id, idType, error: nombaErrMsg },
+        "Failed to fetch checkout transaction from Nomba — returning local invoice only"
+      );
+
+      sendSuccess(res, {
+        invoice,
+        checkoutTransaction: null,
+        warning: `Could not fetch Nomba checkout transaction: ${nombaErrMsg}`,
+      });
+      return;
+    }
+
+    // === STEP 4: Return enriched merged payload ===
+    logger.info(
+      {
+        id,
+        idType,
+        invoiceId: invoice._id,
+        invoiceStatus: invoice.status,
+        nombaSuccess: checkoutTransaction.success,
+        nombaMessage: checkoutTransaction.message,
+        paymentMethod: checkoutTransaction.cardDetails
+          ? "card"
+          : checkoutTransaction.transferDetails
+          ? "bank_transfer"
+          : "unknown",
+      },
+      "Checkout transaction fetched successfully"
+    );
+
+    sendSuccess(res, {
+      // Internal FlexCharge invoice — source of truth for subscription status
+      invoice,
+
+      // Live Nomba checkout transaction — full breakdown of the payment event
+      checkoutTransaction: {
+        // Was this transaction successfully completed?
+        success: checkoutTransaction.success,
+        message: checkoutTransaction.message,
+
+        // Order metadata
+        order: {
+          orderId: checkoutTransaction.order.orderId,
+          orderReference: checkoutTransaction.order.orderReference,
+          customerId: checkoutTransaction.order.customerId,
+          accountId: checkoutTransaction.order.accountId,
+          callbackUrl: checkoutTransaction.order.callbackUrl,
+          customerEmail: checkoutTransaction.order.customerEmail,
+          // Consistent kobo representation alongside Nomba's raw naira string
+          amountKobo: Math.round(
+            parseFloat(checkoutTransaction.order.amount) * 100
+          ),
+          amountNaira: checkoutTransaction.order.amount,
+          currency: checkoutTransaction.order.currency,
+        },
+
+        // Payment-method-specific details (only one will be present per transaction)
+        transactionDetails: checkoutTransaction.transactionDetails ?? null,
+        transferDetails: checkoutTransaction.transferDetails ?? null,
+        cardDetails: checkoutTransaction.cardDetails ?? null,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
