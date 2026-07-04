@@ -12,6 +12,10 @@ import { env } from "../config/environment.js";
  */
 export const logger = pino({
   level: env.NODE_ENV === "production" ? "info" : "debug",
+  serializers: {
+    err: pino.stdSerializers.err,
+    error: pino.stdSerializers.err,
+  },
   redact: {
     paths: [
       "req.headers.authorization",
