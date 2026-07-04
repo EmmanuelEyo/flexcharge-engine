@@ -1003,12 +1003,19 @@ class NombaService {
       { headers: authHeaders }
     );
 
+    const { code, description, data } = response.data;
+
+    // Check Nomba's custom success codes (typically "00" or "200")
+    if (code !== "00" && code !== "200" && code !== "000") {
+      throw new Error(description || `Nomba refund rejected with code: ${code}`);
+    }
+
     logger.info(
       { transactionId: params.transactionId, amount: amountInNaira },
       "Nomba checkout order refunded"
     );
 
-    return { status: response.data.data?.status || "SUCCESS" };
+    return { status: data?.status || "SUCCESS" };
   }
 
   // ============================================================

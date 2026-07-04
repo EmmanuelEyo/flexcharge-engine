@@ -132,7 +132,7 @@ export default function WalletsPage() {
                         {formatCurrency(wallet.balance)}
                       </td>
                       <td className="py-4 px-6 text-sm">
-                        {wallet.autoTopUp?.enabled ? (
+                        {wallet.autoTopUp ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
                             Enabled
                           </span>
