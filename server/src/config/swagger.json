@@ -3223,6 +3223,271 @@
             "description": "Nomba integration not configured"
           }
         }
+      },
+      "post": {
+        "summary": "Update tokenized card data",
+        "description": "Updates the email address associated with a specific tokenized card token.\n\nNomba validates that `currentEmailAddress` **exactly matches** the email on\nrecord for `tokenKey` before applying the update. If there is a mismatch,\nNomba will return a 400 error.\n\n**Use cases:**\n- Customer updates their email address in the merchant's app\n- Merging duplicate customer accounts under a new email\n- Correcting a typo in the customer's original email\n\nProxies to Nomba API: `POST /v1/checkout/tokenized-card-data`",
+        "tags": [
+          "Tokenized Cards"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tokenKey",
+                  "currentEmailAddress",
+                  "newEmailAddress"
+                ],
+                "properties": {
+                  "tokenKey": {
+                    "type": "string",
+                    "description": "The token key returned by Nomba when the card was tokenized. Available from GET /api/tokenized-cards.",
+                    "example": "5844858382"
+                  },
+                  "currentEmailAddress": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Email address currently associated with this tokenKey in Nomba's vault. Must match exactly — Nomba validates this before applying the update.",
+                    "example": "email@email.com"
+                  },
+                  "newEmailAddress": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "New email address to associate with this tokenKey going forward.",
+                    "example": "newemail@email.com"
+                  }
+                }
+              },
+              "example": {
+                "tokenKey": "5844858382",
+                "currentEmailAddress": "email@email.com",
+                "newEmailAddress": "newemail@email.com"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tokenized card updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "boolean",
+                          "description": "true when the update was applied successfully",
+                          "example": true
+                        },
+                        "message": {
+                          "type": "string",
+                          "description": "The new email address now associated with the token",
+                          "example": "newemail@email.com"
+                        },
+                        "tokenizedCardData": {
+                          "type": "array",
+                          "description": "The updated card records for this token",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "tokenKey": {
+                                "type": "string",
+                                "example": "e890bd1a9f0d"
+                              },
+                              "customerEmail": {
+                                "type": "string",
+                                "format": "email",
+                                "example": "email@email.com"
+                              },
+                              "cardType": {
+                                "type": "string",
+                                "example": "Verve"
+                              },
+                              "cardPan": {
+                                "type": "string",
+                                "example": "234818********7580"
+                              },
+                              "tokenExpirationDate": {
+                                "type": "string",
+                                "example": "20/20"
+                              }
+                            }
+                          }
+                        },
+                        "total": {
+                          "type": "integer",
+                          "description": "Number of card records returned",
+                          "example": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "status": true,
+                    "message": "newemail@email.com",
+                    "total": 1,
+                    "tokenizedCardData": [
+                      {
+                        "tokenKey": "e890bd1a9f0d",
+                        "customerEmail": "newemail@email.com",
+                        "cardType": "Verve",
+                        "cardPan": "234818********7580",
+                        "tokenExpirationDate": "20/20"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — missing or invalid request body fields"
+          },
+          "401": {
+            "description": "Missing or invalid authentication token"
+          },
+          "403": {
+            "description": "Forbidden — insufficient permissions for this operation"
+          },
+          "404": {
+            "description": "tokenKey not found in Nomba's vault"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error or Nomba API failure"
+          },
+          "503": {
+            "description": "Nomba integration not configured (missing NOMBA_CLIENT_ID / NOMBA_CLIENT_SECRET)"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete tokenized card data",
+        "description": "Permanently removes a tokenized card from Nomba's vault.\n\n> **⚠️ IRREVERSIBLE**: Once deleted, the `tokenKey` is immediately invalidated\n> and can no longer be used for recurring charges. The customer must go through\n> the full card-save OTP flow again to re-register their card.\n\n**Use cases:**\n- Customer explicitly requests card removal (GDPR / NDPR compliance)\n- Merchant cleaning up expired or invalid token keys\n- Regulatory or compliance-mandated PII purging\n\n**Note:** Although this is a DELETE request, Nomba requires a JSON body\ncontaining the `tokenKey`. Pass it in the request body as shown.\n\nProxies to Nomba API: `DELETE /v1/checkout/tokenized-card-data`",
+        "tags": [
+          "Tokenized Cards"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tokenKey"
+                ],
+                "properties": {
+                  "tokenKey": {
+                    "type": "string",
+                    "description": "The token key of the card to permanently delete. Once deleted this tokenKey is invalidated and cannot be recovered.",
+                    "example": "5844858382"
+                  }
+                }
+              },
+              "example": {
+                "tokenKey": "5844858382"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tokenized card deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "boolean",
+                          "description": "true when the card was deleted successfully",
+                          "example": true
+                        },
+                        "message": {
+                          "type": "string",
+                          "description": "Human-readable confirmation",
+                          "example": "success"
+                        },
+                        "tokenKey": {
+                          "type": "string",
+                          "description": "The tokenKey that was deleted",
+                          "example": "5844858382"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "status": true,
+                    "message": "success",
+                    "tokenKey": "5844858382"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — missing or invalid request body fields"
+          },
+          "401": {
+            "description": "Missing or invalid authentication token"
+          },
+          "403": {
+            "description": "Forbidden — insufficient permissions for this operation"
+          },
+          "404": {
+            "description": "tokenKey not found in Nomba's vault"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error or Nomba API failure"
+          },
+          "503": {
+            "description": "Nomba integration not configured (missing NOMBA_CLIENT_ID / NOMBA_CLIENT_SECRET)"
+          }
+        }
       }
     },
     "/tokenized-cards/user/{orderReference}": {
@@ -3313,6 +3578,340 @@
           },
           "503": {
             "description": "Nomba integration not configured"
+          }
+        }
+      }
+    },
+    "/tokenized-cards/user-card/saved-card/auth": {
+      "post": {
+        "summary": "Request OTP to validate user before fetching saved cards",
+        "description": "Triggers Nomba to send an OTP SMS to the customer's registered phone number,\nauthenticating them **before** their previously saved cards are retrieved.\n\n**When to call:**\nCall this when `GET /api/checkout/orders/{orderReference}` returns `hasSavedCards: true`.\nAfter the OTP is delivered, submit it via `GET /api/tokenized-cards/user/{orderReference}?otp=<otp>`\nto retrieve the customer's saved cards.\n\n**Full flow:**\n1. `POST /api/tokenized-cards/user-card/saved-card/auth` ← **this endpoint** — triggers OTP\n2. Customer receives OTP via SMS\n3. `GET /api/tokenized-cards/user/{orderReference}?otp=<otp>` — returns saved cards\n\nProxies to Nomba API: `POST /v1/checkout/user-card/saved-card/auth`",
+        "tags": [
+          "Tokenized Cards"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "orderReference"
+                ],
+                "properties": {
+                  "orderReference": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The original checkout order reference. Used by Nomba to look up the customer's registered mobile number.",
+                    "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
+                  }
+                }
+              },
+              "example": {
+                "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP dispatched successfully — customer will receive an SMS shortly",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "success"
+                        },
+                        "orderReference": {
+                          "type": "string",
+                          "format": "uuid",
+                          "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
+                        },
+                        "nextStep": {
+                          "type": "string",
+                          "example": "Submit the OTP the customer received via POST /api/tokenized-cards/user-card"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "success": true,
+                    "message": "success",
+                    "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
+                    "nextStep": "Submit the OTP the customer received via GET /api/tokenized-cards/user/:orderReference?otp=<otp>"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — missing or invalid request body fields"
+          },
+          "401": {
+            "description": "Missing or invalid authentication token"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error or Nomba API failure"
+          },
+          "503": {
+            "description": "Nomba integration not configured (missing NOMBA_CLIENT_ID / NOMBA_CLIENT_SECRET)"
+          }
+        }
+      }
+    },
+    "/tokenized-cards/user-card/auth": {
+      "post": {
+        "summary": "Request OTP before saving a user's card",
+        "description": "Triggers Nomba to send an OTP SMS to the customer's registered phone number,\nauthenticating them **before** their card is saved for future use.\n\n**When to call:**\nAfter a successful checkout payment **and** the customer has opted to save their card\nfor future recurring charges. Call this endpoint first to dispatch the OTP, then submit\nthe OTP via `POST /api/tokenized-cards/user-card` to finalise the card save.\n\n**Full card-save flow:**\n1. Customer completes payment successfully\n2. `POST /api/tokenized-cards/user-card/auth` ← **this endpoint** — triggers OTP\n3. Customer receives OTP via SMS\n4. `POST /api/tokenized-cards/user-card` — submits OTP to tokenize and save the card\n\nProxies to Nomba API: `POST /v1/checkout/user-card/auth`",
+        "tags": [
+          "Tokenized Cards"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "orderReference",
+                  "phoneNumber"
+                ],
+                "properties": {
+                  "orderReference": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The original checkout order reference against which the payment was made.",
+                    "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
+                  },
+                  "phoneNumber": {
+                    "type": "string",
+                    "description": "The customer's Nigerian mobile number. Nomba will SMS the OTP to this number. Accepted formats: 08012345678 | +2348012345678.",
+                    "example": "08012345678"
+                  }
+                }
+              },
+              "example": {
+                "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
+                "phoneNumber": "08012345678"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP dispatched successfully — customer will receive an SMS shortly",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "success"
+                        },
+                        "orderReference": {
+                          "type": "string",
+                          "format": "uuid",
+                          "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
+                        },
+                        "nextStep": {
+                          "type": "string",
+                          "example": "Submit the OTP the customer received via POST /api/tokenized-cards/user-card"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "success": true,
+                    "message": "success",
+                    "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
+                    "nextStep": "Submit the OTP the customer received via POST /api/tokenized-cards/user-card"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — missing or invalid request body fields"
+          },
+          "401": {
+            "description": "Missing or invalid authentication token"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error or Nomba API failure"
+          },
+          "503": {
+            "description": "Nomba integration not configured (missing NOMBA_CLIENT_ID / NOMBA_CLIENT_SECRET)"
+          }
+        }
+      }
+    },
+    "/tokenized-cards/user-card": {
+      "post": {
+        "summary": "Submit user OTP to complete card tokenization",
+        "description": "Submits the OTP the customer received on their mobile phone to Nomba.\nOn success, Nomba tokenizes and stores the card for future recurring charges.\n\n**This is the FINAL step of the card-save OTP flow:**\n1. `POST /api/tokenized-cards/user-card/auth` — triggers OTP\n2. Customer receives OTP via SMS\n3. `POST /api/tokenized-cards/user-card` ← **this endpoint** — submits OTP, saves card\n\nAfter this call succeeds, the card's `tokenKey` will appear in future calls to:\n- `GET /api/tokenized-cards` (merchant card list)\n- `GET /api/tokenized-cards/user/{orderReference}` (customer saved cards)\n\nThe `tokenKey` can then be used to charge the customer via the tokenized-card-payment endpoint.\n\nProxies to Nomba API: `POST /v1/checkout/user-card`",
+        "tags": [
+          "Tokenized Cards"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "orderReference",
+                  "phoneNumber",
+                  "otp"
+                ],
+                "properties": {
+                  "orderReference": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The original checkout order reference. Must match the reference used in step 1 (POST /user-card/auth).",
+                    "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
+                  },
+                  "phoneNumber": {
+                    "type": "string",
+                    "description": "The customer's Nigerian mobile number. Must match the number used in step 1 (POST /user-card/auth).",
+                    "example": "08012345678"
+                  },
+                  "otp": {
+                    "type": "string",
+                    "description": "The one-time code received on the customer's mobile phone. Must be 4–8 numeric digits.",
+                    "example": "1234",
+                    "minLength": 4,
+                    "maxLength": 8,
+                    "pattern": "^\\d{4,8}$"
+                  }
+                }
+              },
+              "example": {
+                "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
+                "phoneNumber": "08012345678",
+                "otp": "1234"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Card saved successfully — the card has been tokenized and is available for future charges",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "message": {
+                          "type": "string",
+                          "example": "success"
+                        },
+                        "orderReference": {
+                          "type": "string",
+                          "format": "uuid",
+                          "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "success": true,
+                    "message": "success",
+                    "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error — missing or invalid request body fields"
+          },
+          "401": {
+            "description": "Missing or invalid authentication token"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error or Nomba API failure"
+          },
+          "503": {
+            "description": "Nomba integration not configured (missing NOMBA_CLIENT_ID / NOMBA_CLIENT_SECRET)"
           }
         }
       }
