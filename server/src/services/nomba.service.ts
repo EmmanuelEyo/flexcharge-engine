@@ -213,6 +213,27 @@ interface NombaGetUserSavedCardsResponse {
   };
 }
 
+/**
+ * Shared response shape for all three OTP trigger/submit endpoints:
+ *   - POST /v1/checkout/user-card/saved-card/auth  (trigger OTP to fetch saved cards)
+ *   - POST /v1/checkout/user-card/auth             (trigger OTP to save a card)
+ *   - POST /v1/checkout/user-card                  (submit OTP to confirm card save)
+ *
+ * Per Nomba API docs the response is identical for all three — only the
+ * semantics of what "success" means differ.
+ *
+ * Note: Nomba returns `success` as the string "true" / "false" in this family
+ * of endpoints (not a boolean). We normalize it to a boolean in our service methods.
+ */
+interface NombaOtpActionResponse {
+  code: string;
+  description: string;
+  data: {
+    success: string | boolean;  // Nomba sends "true" as a string; we normalize
+    message: string;
+  };
+}
+
 export type NombaPaymentMethod =
   | "Card"
   | "Transfer"
@@ -1013,8 +1034,10 @@ class NombaService {
 
   // ============================================================
   // TOKENIZED CARD MANAGEMENT
-  // Online Checkout: GET /v1/checkout/tokenized-card-data
-  // Charge:         GET /v1/checkout/user-card/{orderReference}
+  // Online Checkout: GET    /v1/checkout/tokenized-card-data
+  //                  POST   /v1/checkout/tokenized-card-data
+  //                  DELETE /v1/checkout/tokenized-card-data
+  // Charge:          GET    /v1/checkout/user-card/{orderReference}
   // ============================================================
 
   /**
@@ -1142,6 +1165,344 @@ class NombaService {
       tokenizedCardData: cards,
       total: cards.length,
     };
+  }
+
+  // ============================================================
+  // UPDATE TOKENIZED CARD
+  // Online Checkout: POST /v1/checkout/tokenized-card-data
+  // ============================================================
+
+  /**
+   * Update the email address associated with a tokenized card.
+   *
+   * Per Nomba API: POST /v1/checkout/tokenized-card-data
+   * Header: accountId (required — parent account UUID)
+   *
+   * Use this to reassign a stored card token to a new customer email
+   * address (e.g. after an email change in the merchant's own system).
+   * Nomba validates that `currentEmailAddress` matches the email on
+   * record for `tokenKey` before applying the update.
+   *
+   * @param tokenKey            - The token key returned by Nomba's tokenization webhook
+   * @param currentEmailAddress - Email address currently associated with the token
+   * @param newEmailAddress     - New email address to map the token to
+   * @returns Updated status plus the full updated tokenizedCardData array
+   */
+  async updateTokenizedCard(params: {
+    tokenKey: string;
+    currentEmailAddress: string;
+    newEmailAddress: string;
+  }): Promise<{
+    status: boolean;
+    message: string;
+    tokenizedCardData: NombaTokenizedCardItem[];
+  }> {
+    if (!params.tokenKey?.trim()) {
+      throw new Error("updateTokenizedCard: tokenKey is required");
+    }
+    if (!params.currentEmailAddress?.trim()) {
+      throw new Error("updateTokenizedCard: currentEmailAddress is required");
+    }
+    if (!params.newEmailAddress?.trim()) {
+      throw new Error("updateTokenizedCard: newEmailAddress is required");
+    }
+
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.post<{
+      code: string;
+      description: string;
+      data: {
+        status: string | boolean;
+        message: string;
+        tokenizedCardData: NombaTokenizedCardItem[];
+      };
+    }>(
+      "/v1/checkout/tokenized-card-data",
+      {
+        tokenKey:            params.tokenKey,
+        currentEmailAddress: params.currentEmailAddress,
+        newEmailAddress:     params.newEmailAddress,
+      },
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba updateTokenizedCard failed: [${code}] ${description}`
+      );
+    }
+
+    // Nomba returns status as string "true"/"false" — normalize to boolean
+    const status = data.status === true || data.status === "true";
+    const cards  = data.tokenizedCardData ?? [];
+
+    logger.info(
+      {
+        tokenKey:        params.tokenKey,
+        newEmailAddress: params.newEmailAddress,
+        status,
+        cardCount:       cards.length,
+      },
+      "Nomba tokenized card updated"
+    );
+
+    return {
+      status,
+      message:           data.message,
+      tokenizedCardData: cards,
+    };
+  }
+
+  // ============================================================
+  // DELETE TOKENIZED CARD
+  // Online Checkout: DELETE /v1/checkout/tokenized-card-data
+  // ============================================================
+
+  /**
+   * Permanently delete a tokenized card from Nomba's vault.
+   *
+   * Per Nomba API: DELETE /v1/checkout/tokenized-card-data
+   * Header: accountId (required — parent account UUID)
+   *
+   * Once deleted, the `tokenKey` can no longer be used for charging.
+   * This should be called when:
+   *   - A customer requests card removal from the merchant's app
+   *   - A card has expired and you want to clean up stale records
+   *   - Regulatory/compliance requires PII purging
+   *
+   * NOTE: Nomba's DELETE endpoint accepts a JSON body (tokenKey).
+   * Axios sends body data for DELETE via the `data` config key.
+   *
+   * @param tokenKey - The token key of the card to permanently delete
+   * @returns { status: boolean, message: string }
+   */
+  async deleteTokenizedCard(tokenKey: string): Promise<{
+    status: boolean;
+    message: string;
+  }> {
+    if (!tokenKey?.trim()) {
+      throw new Error("deleteTokenizedCard: tokenKey is required");
+    }
+
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.delete<{
+      code: string;
+      description: string;
+      data: {
+        status: string | boolean;
+        message: string;
+      };
+    }>(
+      "/v1/checkout/tokenized-card-data",
+      {
+        headers: authHeaders,
+        // Axios requires body data on DELETE requests to be passed via `data`
+        data: { tokenKey },
+      }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba deleteTokenizedCard failed: [${code}] ${description}`
+      );
+    }
+
+    // Nomba returns status as string "true" — normalize to real boolean
+    const status = data.status === true || data.status === "true";
+
+    logger.info(
+      { tokenKey, status },
+      "Nomba tokenized card deleted"
+    );
+
+    return { status, message: data.message };
+  }
+
+  // ============================================================
+  // CARD-SAVING OTP FLOW
+  // Charge: POST /v1/checkout/user-card/saved-card/auth
+  //         POST /v1/checkout/user-card/auth
+  //         POST /v1/checkout/user-card
+  // ============================================================
+
+  /**
+   * Trigger OTP delivery to authenticate a user before fetching their saved cards.
+   *
+   * Per Nomba API: POST /v1/checkout/user-card/saved-card/auth
+   *
+   * Call this BEFORE calling GET /v1/checkout/user-card/{orderReference}.
+   * Per the Nomba docs: "Use this endpoint when the Order details endpoint
+   * indicates the user already has saved cards."
+   *
+   * @param orderReference - The original checkout order reference
+   * @returns { success: true, message: "success" } on successful OTP dispatch
+   */
+  async requestSavedCardAuth(orderReference: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (!orderReference?.trim()) {
+      throw new Error("requestSavedCardAuth: orderReference is required");
+    }
+
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.post<NombaOtpActionResponse>(
+      "/v1/checkout/user-card/saved-card/auth",
+      { orderReference },
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba requestSavedCardAuth failed: [${code}] ${description}`
+      );
+    }
+
+    // Nomba returns success as the string "true" — normalize to a real boolean
+    const success = data.success === true || data.success === "true";
+
+    logger.info(
+      { orderReference, success },
+      "Nomba saved-card auth OTP triggered"
+    );
+
+    return { success, message: data.message };
+  }
+
+  /**
+   * Trigger OTP delivery to authenticate a user before saving their card.
+   *
+   * Per Nomba API: POST /v1/checkout/user-card/auth
+   *
+   * Call this AFTER a successful payment when the user has opted to save
+   * their card for future use. Nomba will SMS an OTP to `phoneNumber`.
+   * The merchant then calls POST /v1/checkout/user-card with that OTP to
+   * complete the card-save.
+   *
+   * @param orderReference - The original checkout order reference
+   * @param phoneNumber    - The customer's mobile number (e.g. "08012345678")
+   * @returns { success: true, message: "success" } on successful OTP dispatch
+   */
+  async requestSaveCardAuth(
+    orderReference: string,
+    phoneNumber: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (!orderReference?.trim()) {
+      throw new Error("requestSaveCardAuth: orderReference is required");
+    }
+    if (!phoneNumber?.trim()) {
+      throw new Error("requestSaveCardAuth: phoneNumber is required");
+    }
+
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.post<NombaOtpActionResponse>(
+      "/v1/checkout/user-card/auth",
+      { orderReference, phoneNumber },
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba requestSaveCardAuth failed: [${code}] ${description}`
+      );
+    }
+
+    const success = data.success === true || data.success === "true";
+
+    logger.info(
+      {
+        orderReference,
+        // Never log phone numbers in plaintext — only log a masked version
+        phoneTail: phoneNumber.slice(-4),
+        success,
+      },
+      "Nomba save-card auth OTP triggered"
+    );
+
+    return { success, message: data.message };
+  }
+
+  /**
+   * Submit the OTP to confirm card tokenization and save the card.
+   *
+   * Per Nomba API: POST /v1/checkout/user-card
+   *
+   * This is the FINAL step of the card-saving flow:
+   *  1. POST /v1/checkout/user-card/auth        → Nomba sends OTP to user's phone
+   *  2. POST /v1/checkout/user-card             → Merchant submits OTP to save card
+   *
+   * On success, Nomba tokenizes and stores the card. The `tokenKey` returned
+   * by future GET /v1/checkout/user-card calls can then be used to charge the
+   * customer via POST /v1/checkout/tokenized-card-payment.
+   *
+   * @param orderReference - The original checkout order reference
+   * @param phoneNumber    - The customer's mobile number
+   * @param otp            - The one-time code received on the customer's phone
+   * @returns { success: true, message: "success" } on successful card save
+   */
+  async submitUserOtp(
+    orderReference: string,
+    phoneNumber: string,
+    otp: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (!orderReference?.trim()) {
+      throw new Error("submitUserOtp: orderReference is required");
+    }
+    if (!phoneNumber?.trim()) {
+      throw new Error("submitUserOtp: phoneNumber is required");
+    }
+    if (!otp?.trim()) {
+      throw new Error("submitUserOtp: otp is required");
+    }
+
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.post<NombaOtpActionResponse>(
+      "/v1/checkout/user-card",
+      { orderReference, phoneNumber, otp },
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba submitUserOtp failed: [${code}] ${description}`
+      );
+    }
+
+    const success = data.success === true || data.success === "true";
+
+    logger.info(
+      {
+        orderReference,
+        phoneTail: phoneNumber.slice(-4),
+        // Never log the OTP value itself
+        otpProvided: true,
+        success,
+      },
+      "Nomba user OTP submitted — card save completed"
+    );
+
+    return { success, message: data.message };
   }
 
   // ============================================================
