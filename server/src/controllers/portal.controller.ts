@@ -97,7 +97,7 @@ export async function getPortalCustomer(
     const customer = await Customer.findOne({
       _id: req.customerId,
       tenantId: req.tenantId,
-    });
+    }).populate("tenantId", "name");
 
     if (!customer) {
       throw new NotFoundError("Customer");
@@ -186,7 +186,7 @@ export async function requestPaymentMethodUpdate(
       amount: 5000, // Small auth charge (50 NGN)
       currency: "NGN",
       customerEmail: customer.email,
-      callbackUrl: `${env.API_BASE_URL}/webhooks/nomba`,
+      callbackUrl: `${env.FRONTEND_URL || "http://localhost:3000"}/portal/dashboard?card_update=success`,
       tokenizeCard: true,
     });
 
@@ -224,6 +224,8 @@ export async function cancelPortalSubscription(
     subscription.cancelAtPeriodEnd = true;
     subscription.cancellationReason = "Canceled by customer via portal";
     await subscription.save();
+
+    await subscription.populate("planId", "name amount interval currency");
 
     logger.info({ subscriptionId: subscription._id }, "Subscription scheduled for cancellation via portal");
 

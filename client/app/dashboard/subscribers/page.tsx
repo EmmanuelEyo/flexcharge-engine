@@ -9,6 +9,7 @@ export type SubscriberStatus = "active" | "past_due" | "canceled" | "paused" | "
 
 export interface Subscriber {
   id: string;
+  customerId: string;
   name: string;
   email: string;
   plan: string;
@@ -129,6 +130,7 @@ function SubscriberDrawer({
 }) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [showChangePlan, setShowChangePlan] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   if (!subscriber) return null;
   const cfg = STATUS_CONFIG[subscriber.status];
@@ -143,6 +145,23 @@ function SubscriberDrawer({
       }
     } catch (error) {
       console.error(`Failed to ${action} subscription:`, error);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleGenerateLink = async () => {
+    try {
+      setLoadingAction("generate_link");
+      const res = await api.post(`/portal/sessions`, { customerId: subscriber.customerId });
+      if (res.data?.data?.portalUrl) {
+        navigator.clipboard.writeText(res.data.data.portalUrl).catch(() => {});
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+      }
+    } catch (error) {
+      console.error("Failed to generate portal link:", error);
+      alert("Failed to generate portal link");
     } finally {
       setLoadingAction(null);
     }
@@ -258,6 +277,15 @@ function SubscriberDrawer({
               Change Plan
             </button>
           )}
+
+          <button 
+            onClick={handleGenerateLink}
+            disabled={!!loadingAction}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors text-sm font-medium shadow-sm disabled:opacity-50"
+          >
+            {loadingAction === 'generate_link' ? <span className="material-symbols-outlined animate-spin text-[16px] leading-none">sync</span> : <span className="material-symbols-outlined text-[16px] leading-none">link</span>}
+            Generate Portal Link
+          </button>
           <div className="flex gap-3">
             {subscriber.status === "active" ? (
               <button 
@@ -291,6 +319,15 @@ function SubscriberDrawer({
           </div>
         </div>
       </div>
+
+      {copiedLink && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in duration-300">
+          <span className="material-symbols-outlined text-[15px] leading-none text-emerald-400">
+            check_circle
+          </span>
+          Portal link copied to clipboard
+        </div>
+      )}
     </>
   );
 }
@@ -311,6 +348,7 @@ export default function SubscribersPage() {
       if (res.data?.data) {
         const mapped = res.data.data.map((sub: any) => ({
           id: sub._id,
+          customerId: sub.customerId?._id || "",
           name: sub.customerId?.name || "Unknown",
           email: sub.customerId?.email || "",
           plan: sub.planId?.name || "Unknown Plan",

@@ -1,0 +1,399 @@
+"use client";
+
+import React, { useEffect, useState, Suspense } from "react";
+import portalApi from "@/lib/portalApi";
+import Button from "@/components/ui/Button";
+import { useSearchParams } from "next/navigation";
+import { usePortal } from "@/context/PortalContext";
+
+interface Subscription {
+  _id: string;
+  status: string;
+  currentPeriodEnd: string;
+  cancelAtPeriodEnd: boolean;
+  planId: {
+    name: string;
+    amount: number;
+    interval: string;
+    currency: string;
+  };
+}
+
+interface Invoice {
+  _id: string;
+  amount: number;
+  status: string;
+  createdAt: string;
+}
+
+function PortalDashboardContent() {
+  const searchParams = useSearchParams();
+  const { customer, loading: customerLoading } = usePortal();
+  
+  const [loading, setLoading] = useState(true);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [showSuccessBanner, setShowSuccessBanner] = useState(false);
+  
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [subRes, invRes] = await Promise.all([
+          portalApi.get("/portal/subscription").catch(() => null),
+          portalApi.get("/portal/invoices").catch(() => null),
+        ]);
+
+        if (subRes?.data?.data) setSubscription(subRes.data.data);
+        if (invRes?.data?.data) setInvoices(invRes.data.data);
+        
+        if (searchParams.get("card_update") === "success") {
+          setShowSuccessBanner(true);
+        }
+      } catch (err) {
+        console.error("Failed to load portal data", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const formatCurrency = (amount: number, currency: string = "NGN") => {
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(amount / 100);
+  };
+
+  const handleUpdatePayment = async () => {
+    setActionLoading(true);
+    try {
+      const res = await portalApi.post("/portal/update-payment-method");
+      if (res.data.data.checkoutLink) {
+        window.location.href = res.data.data.checkoutLink;
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to initiate payment update. Please try again.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    setActionLoading(true);
+    try {
+      const res = await portalApi.post("/portal/cancel");
+      setSubscription(res.data.data);
+      setShowCancelModal(false);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to cancel subscription.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePrintReceipt = (inv: Invoice) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    
+    const html = `
+      <html>
+        <head>
+          <title>Receipt - ${inv._id}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #0f172a; max-width: 600px; margin: 0 auto; line-height: 1.5; }
+            h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; color: #0f172a; }
+            .meta { color: #64748b; font-size: 14px; margin-bottom: 32px; }
+            .meta p { margin: 4px 0; }
+            .row { display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding: 16px 0; font-size: 15px; }
+            .row:last-child { border-bottom: none; }
+            .total { font-weight: 600; font-size: 18px; margin-top: 16px; border-top: 2px solid #e2e8f0; border-bottom: none; }
+            .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; text-transform: capitalize; }
+            .badge-paid { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+            .badge-pending { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+            .badge-refunded { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+            .badge-failed { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+            .footer { margin-top: 48px; text-align: center; color: #94a3b8; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <h1>Receipt from ${customer?.tenantId?.name || "FlexCharge"}</h1>
+          <div class="meta">
+            <p>Invoice ID: ${inv._id}</p>
+            <p>Date: ${new Date(inv.createdAt).toLocaleDateString()}</p>
+            <p>Billed to: ${customer?.name} (${customer?.email})</p>
+          </div>
+          
+          <div class="row">
+            <span style="color: #64748b">Status</span>
+            <span class="badge badge-${inv.status}">${inv.status}</span>
+          </div>
+          
+          <div class="row total">
+            <span>Total Amount</span>
+            <span>${formatCurrency(inv.amount)}</span>
+          </div>
+          
+          <div class="footer">
+            <p>Powered by FlexCharge</p>
+          </div>
+          
+          <script>
+            window.onload = () => {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  if (loading || customerLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh]">
+        <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!customer) {
+    return (
+      <div className="text-center">
+        <h2 className="text-xl font-medium text-slate-900">Session expired or invalid</h2>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      {showSuccessBanner && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3 animate-in slide-in-from-top-4 duration-300">
+          <span className="material-symbols-outlined text-emerald-600">check_circle</span>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-emerald-950">Payment Method Updated</h3>
+            <p className="text-sm text-emerald-800 mt-0.5">
+              Your card details have been securely updated. Future renewals will use this new payment method.
+            </p>
+          </div>
+          <button onClick={() => setShowSuccessBanner(false)} className="text-emerald-500 hover:text-emerald-700 transition-colors">
+            <span className="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
+      )}
+
+      {/* Hero */}
+      <div className="pb-4">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
+          Hello, {customer.name}
+        </h1>
+        <p className="text-slate-500 text-lg">
+          Manage your subscription and billing details here.
+        </p>
+      </div>
+
+      {/* Subscription Card */}
+      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 relative overflow-hidden z-0">
+        {/* Subtle decorative background */}
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-full opacity-50 blur-3xl pointer-events-none"></div>
+
+        <div className="relative z-10">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
+            <div>
+              <h2 className="text-sm font-semibold text-indigo-600 tracking-wide uppercase mb-1">
+                Current Plan
+              </h2>
+              {subscription ? (
+                <>
+                  <h3 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+                    {subscription.planId.name}
+                    {subscription.cancelAtPeriodEnd ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                        Canceling
+                      </span>
+                    ) : subscription.status === "active" ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200 capitalize">
+                        {subscription.status}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-slate-500 mt-2 text-base">
+                    {formatCurrency(subscription.planId.amount, subscription.planId.currency)} / {subscription.planId.interval}
+                  </p>
+                </>
+              ) : (
+                <h3 className="text-2xl font-semibold text-slate-900">No active plan</h3>
+              )}
+            </div>
+
+            {subscription && (
+              <div className="text-left sm:text-right">
+                <p className="text-sm font-medium text-slate-500 mb-1">
+                  {subscription.cancelAtPeriodEnd ? "Access ends on" : "Next billing date"}
+                </p>
+                <p className="text-base font-semibold text-slate-900">
+                  {new Date(subscription.currentPeriodEnd).toLocaleDateString("en-US", {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric"
+                  })}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
+            {subscription && !subscription.cancelAtPeriodEnd && subscription.status === 'active' && (
+              <Button
+                variant="primary"
+                onClick={handleUpdatePayment}
+                disabled={actionLoading}
+              >
+                Update Payment Method
+              </Button>
+            )}
+            
+            {subscription && !subscription.cancelAtPeriodEnd && (
+              <Button
+                variant="secondary"
+                onClick={() => setShowCancelModal(true)}
+                disabled={actionLoading}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-transparent hover:border-red-200"
+              >
+                Cancel Subscription
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Invoice History */}
+      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100">
+          <h3 className="text-lg font-semibold text-slate-900">Billing History</h3>
+        </div>
+        
+        {invoices.length === 0 ? (
+          <div className="p-8 text-center text-slate-500">
+            No invoices found.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3">Date</th>
+                  <th className="px-6 py-3">Amount</th>
+                  <th className="px-6 py-3">Status</th>
+                  <th className="px-6 py-3 text-right">Receipt</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {invoices.map((inv) => (
+                  <tr key={inv._id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-900 font-medium">
+                      {new Date(inv.createdAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric"
+                      })}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                      {formatCurrency(inv.amount)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${
+                        inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700' :
+                        inv.status === 'pending' ? 'bg-amber-50 text-amber-700' :
+                        inv.status === 'refunded' ? 'bg-blue-50 text-blue-700' :
+                        'bg-red-50 text-red-700'
+                      }`}>
+                        {inv.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <button 
+                        onClick={() => handlePrintReceipt(inv)}
+                        className="text-slate-400 hover:text-indigo-600 transition-colors p-1.5 rounded-lg hover:bg-indigo-50 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        title="Print Receipt"
+                      >
+                        <span className="material-symbols-outlined text-[20px] leading-none">
+                          download
+                        </span>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Cancel Modal with Glassmorphism */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => !actionLoading && setShowCancelModal(false)}></div>
+          
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-6 border-b border-slate-100 flex items-start gap-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-red-600">warning</span>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold tracking-tight text-slate-900">Cancel Subscription</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Are you sure you want to cancel your subscription? You will continue to have access until the end of your current billing period.
+                </p>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 border-t border-slate-100">
+              <Button
+                variant="secondary"
+                onClick={() => setShowCancelModal(false)}
+                disabled={actionLoading}
+              >
+                Keep Subscription
+              </Button>
+              <button
+                onClick={handleCancelSubscription}
+                disabled={actionLoading}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium text-sm hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {actionLoading && (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                )}
+                Yes, Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function PortalDashboard() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="w-8 h-8 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
+      </div>
+    }>
+      <PortalDashboardContent />
+    </Suspense>
+  );
+}
