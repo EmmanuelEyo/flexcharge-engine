@@ -245,6 +245,166 @@
         }
       }
     },
+    "/invoices/checkout-transaction": {
+      "get": {
+        "summary": "Fetch checkout transaction details",
+        "description": "Fetches the full live status and details of a checkout transaction from Nomba, merged with the corresponding FlexCharge invoice record.\n\n**Wraps:** `GET https://api.nomba.com/v1/checkout/transaction`\n\n**idType Options:**\n- `ORDER_REFERENCE` (default) — Use the merchant-supplied reference string (stored as `nombaOrderReference` on the Invoice).\n- `ORDER_ID` — Use the UUID that Nomba returns when the checkout order is created.\n\n**Response includes four sections** (Nomba returns only the relevant ones per payment method):\n- `order` — always present (order metadata)\n- `transactionDetails` — present for card payments (includes tokenization status, payment references)\n- `transferDetails` — present for bank transfer payments\n- `cardDetails` — present when payment was made by card (masked PAN, card type, bank code)\n\n**This is distinct from `GET /invoices/order/:orderReference`** which fetches static order metadata. This endpoint returns the *transaction outcome* — whether the payment succeeded, how it was paid, and the full payment-method breakdown.\n\n**Graceful degradation:** Returns local invoice data with a `warning` field if Nomba is unreachable.",
+        "tags": ["Invoices"],
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "idType",
+            "in": "query",
+            "description": "Which identifier type to use when looking up the transaction on Nomba. Defaults to ORDER_REFERENCE.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["ORDER_REFERENCE", "ORDER_ID"],
+              "default": "ORDER_REFERENCE",
+              "example": "ORDER_REFERENCE"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "The identifier value. Must match the type selected in `idType`.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Merged FlexCharge invoice + live Nomba checkout transaction details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "invoice": {
+                          "description": "The FlexCharge internal invoice record",
+                          "$ref": "#/components/schemas/Invoice"
+                        },
+                        "checkoutTransaction": {
+                          "description": "Live Nomba checkout transaction. null if Nomba is unreachable.",
+                          "nullable": true,
+                          "type": "object",
+                          "properties": {
+                            "success": {
+                              "type": "boolean",
+                              "description": "True if the transaction is already completed and successful",
+                              "example": true
+                            },
+                            "message": {
+                              "type": "string",
+                              "description": "Human-readable status description",
+                              "example": "success"
+                            },
+                            "order": {
+                              "type": "object",
+                              "description": "Order metadata for this transaction",
+                              "properties": {
+                                "orderId": { "type": "string", "example": "56e03654-0c32-4d3e-bbd6-a9df22994a12" },
+                                "orderReference": { "type": "string", "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58" },
+                                "customerId": { "type": "string", "example": "762878332454" },
+                                "accountId": { "type": "string", "example": "56e03654-0c32-4d3e-bbd6-a9df22994a12" },
+                                "callbackUrl": { "type": "string", "example": "https://merchant.com/callback" },
+                                "customerEmail": { "type": "string", "format": "email", "example": "customer@example.com" },
+                                "amountKobo": { "type": "integer", "description": "Amount in Kobo", "example": 1000000 },
+                                "amountNaira": { "type": "string", "description": "Original Naira string from Nomba", "example": "10000.00" },
+                                "currency": { "type": "string", "enum": ["NGN"], "example": "NGN" }
+                              }
+                            },
+                            "transactionDetails": {
+                              "type": "object",
+                              "nullable": true,
+                              "description": "Present for card payments. Contains payment gateway references and tokenization status.",
+                              "properties": {
+                                "transactionDate": { "type": "string", "format": "date-time", "example": "2023-12-06T15:46:43.000Z" },
+                                "paymentReference": { "type": "string", "example": "5844858382134" },
+                                "paymentVendorReference": { "type": "string", "example": "5844858382675493" },
+                                "tokenizedCardPayment": { "type": "boolean", "description": "True if paid via a tokenized card (recurring billing)", "example": true },
+                                "statusCode": { "type": "string", "description": "Gateway status message", "example": "Payment approved" }
+                              }
+                            },
+                            "transferDetails": {
+                              "type": "object",
+                              "nullable": true,
+                              "description": "Present for bank transfer payments. Contains NIP session and account details.",
+                              "properties": {
+                                "sessionId": { "type": "string", "example": "67584432178569543" },
+                                "beneficiaryAccountName": { "type": "string", "example": "Tope Fade" },
+                                "beneficiaryAccountNumber": { "type": "string", "example": "5844858382" },
+                                "originatorAccountName": { "type": "string", "example": "Femi Fash" },
+                                "originatorAccountNumber": { "type": "string", "example": "3409082834" },
+                                "narration": { "type": "string", "example": "Checkout payment" },
+                                "destinationInstitutionCode": { "type": "string", "example": "057" },
+                                "paymentReference": { "type": "string", "example": "44384586756" }
+                              }
+                            },
+                            "cardDetails": {
+                              "type": "object",
+                              "nullable": true,
+                              "description": "Present when the payment was made by card. Contains masked PAN and card metadata.",
+                              "properties": {
+                                "cardPan": { "type": "string", "description": "Masked card number", "example": "515123 **** **** 6667" },
+                                "cardType": { "type": "string", "description": "Card scheme", "example": "Verve" },
+                                "cardCurrency": { "type": "string", "example": "NGN" },
+                                "cardBank": { "type": "string", "description": "Issuing bank code", "example": "057" }
+                              }
+                            }
+                          }
+                        },
+                        "warning": {
+                          "type": "string",
+                          "description": "Present only when Nomba is unreachable.",
+                          "example": "Could not fetch Nomba checkout transaction: Request timeout"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request — missing required query parameter 'id'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": false },
+                    "error": { "type": "string", "example": "Query parameter 'id' is required." }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized — invalid or missing credentials" },
+          "404": {
+            "description": "Not Found — no invoice in this tenant's account matches the provided id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": false },
+                    "error": { "type": "string", "example": "No invoice found for ORDER_REFERENCE '90e81e8a-...' in this tenant account" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/register": {
       "post": {
         "summary": "Register a new Tenant",

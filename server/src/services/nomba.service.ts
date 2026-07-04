@@ -100,6 +100,56 @@ interface NombaTransactionStatusResponse {
   };
 }
 
+/**
+ * Response shape for GET /v1/checkout/transaction
+ * Matches the Nomba API spec exactly.
+ *
+ * NOTE: This is DIFFERENT from verifyTransaction which calls
+ * /v1/transactions/accounts/{subAccountId}/single (the ledger/Transactions API).
+ * This endpoint is the dedicated *checkout* transaction status endpoint.
+ */
+interface NombaCheckoutTransactionResponse {
+  code: string;
+  description: string;
+  data: {
+    success: boolean;         // true = transaction completed and approved
+    message: string;          // human-readable status e.g. "success"
+    order: {
+      orderId: string;
+      orderReference: string;
+      customerId: string;
+      accountId: string;
+      callbackUrl: string;
+      customerEmail: string;
+      amount: string;         // Decimal Naira string e.g. "10000.00"
+      currency: string;       // "NGN"
+    };
+    transactionDetails?: {
+      transactionDate: string;          // ISO 8601 datetime
+      paymentReference: string;
+      paymentVendorReference: string;
+      tokenizedCardPayment: boolean;    // true if paid via tokenized card
+      statusCode: string;               // e.g. "Payment approved"
+    };
+    transferDetails?: {
+      sessionId: string;
+      beneficiaryAccountName: string;
+      beneficiaryAccountNumber: string;
+      originatorAccountName: string;
+      originatorAccountNumber: string;
+      narration: string;
+      destinationInstitutionCode: string;
+      paymentReference: string;
+    };
+    cardDetails?: {
+      cardPan: string;        // Masked PAN e.g. "515123 **** **** 6667"
+      cardType: string;       // e.g. "Verve"
+      cardCurrency: string;   // e.g. "NGN"
+      cardBank: string;       // Bank code e.g. "057"
+    };
+  };
+}
+
 export type NombaPaymentMethod =
   | "Card"
   | "Transfer"
@@ -633,6 +683,110 @@ class NombaService {
       transactionId: response.data.data.transactionId,
       transactionRef: response.data.data.transactionRef,
       tokenizedCardData: response.data.data.tokenizedCardData,
+    };
+  }
+
+  // ============================================================
+  // FETCH CHECKOUT TRANSACTION
+  // Per Nomba API: GET /v1/checkout/transaction
+  // ============================================================
+
+  /**
+   * Fetch the live status and full details of a checkout transaction.
+   *
+   * This is the dedicated checkout transaction status endpoint.
+   * It supports two query modes via the `idType` parameter:
+   *   - ORDER_REFERENCE: uses the merchant-supplied reference string
+   *   - ORDER_ID:        uses the UUID returned by Nomba when the order was created
+   *
+   * NOTE: This is DIFFERENT from `verifyTransaction()` which queries the
+   * sub-account Transactions ledger API for internal billing reconciliation.
+   * Use THIS method when you want the full checkout transaction breakdown
+   * (card details, transfer details, tokenization status) from the checkout flow.
+   *
+   * @param id     - The ORDER_ID or ORDER_REFERENCE value
+   * @param idType - Which id type to use (defaults to ORDER_REFERENCE)
+   */
+  async fetchCheckoutTransaction(
+    id: string,
+    idType: "ORDER_ID" | "ORDER_REFERENCE" = "ORDER_REFERENCE"
+  ): Promise<{
+    success: boolean;
+    message: string;
+    order: {
+      orderId: string;
+      orderReference: string;
+      customerId: string;
+      accountId: string;
+      callbackUrl: string;
+      customerEmail: string;
+      amount: string;
+      currency: string;
+    };
+    transactionDetails?: {
+      transactionDate: string;
+      paymentReference: string;
+      paymentVendorReference: string;
+      tokenizedCardPayment: boolean;
+      statusCode: string;
+    };
+    transferDetails?: {
+      sessionId: string;
+      beneficiaryAccountName: string;
+      beneficiaryAccountNumber: string;
+      originatorAccountName: string;
+      originatorAccountNumber: string;
+      narration: string;
+      destinationInstitutionCode: string;
+      paymentReference: string;
+    };
+    cardDetails?: {
+      cardPan: string;
+      cardType: string;
+      cardCurrency: string;
+      cardBank: string;
+    };
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.get<NombaCheckoutTransactionResponse>(
+      "/v1/checkout/transaction",
+      {
+        params: { idType, id },
+        headers: authHeaders,
+      }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba fetchCheckoutTransaction failed [${code}]: ${description}`
+      );
+    }
+
+    logger.info(
+      {
+        id,
+        idType,
+        success: data.success,
+        message: data.message,
+        orderId: data.order.orderId,
+        orderReference: data.order.orderReference,
+        hasCardDetails: !!data.cardDetails,
+        hasTransferDetails: !!data.transferDetails,
+        tokenizedCardPayment: data.transactionDetails?.tokenizedCardPayment,
+      },
+      "Nomba checkout transaction fetched"
+    );
+
+    return {
+      success: data.success,
+      message: data.message,
+      order: data.order,
+      transactionDetails: data.transactionDetails,
+      transferDetails: data.transferDetails,
+      cardDetails: data.cardDetails,
     };
   }
 
