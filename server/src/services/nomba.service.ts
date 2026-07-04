@@ -46,6 +46,32 @@ interface NombaCheckoutOrderResponse {
   };
 }
 
+/**
+ * Response shape for GET /v1/checkout/order/{orderReference}
+ * Matches the Nomba API spec exactly.
+ */
+interface NombaCheckoutOrderDetailsResponse {
+  code: string;
+  description: string;
+  data: {
+    order: {
+      orderId: string;
+      orderReference: string;
+      customerId: string;
+      accountId: string;
+      callbackUrl: string;
+      customerEmail: string;
+      amount: string;         // Decimal string e.g. "10000.00"
+      currency: string;       // "NGN"
+      businessName: string;
+      businessEmail: string;
+      businessLogo: string;
+    };
+    hasSavedCards: boolean;
+    base64EncodedRsaPublicKey: string;
+  };
+}
+
 interface NombaTokenizedChargeResponse {
   code: string;
   description: string;
@@ -430,6 +456,71 @@ class NombaService {
     return {
       orderReference: response.data.data.orderReference,
       checkoutLink: response.data.data.checkoutLink,
+    };
+  }
+
+  // ============================================================
+  // GET CHECKOUT ORDER DETAILS
+  // Per Nomba API: GET /v1/checkout/order/{orderReference}
+  // ============================================================
+
+  /**
+   * Fetch a single checkout order by its orderReference.
+   *
+   * Used to:
+   * 1. Verify order status from the FlexCharge invoice dashboard
+   * 2. Surface Nomba business/customer metadata alongside our invoice record
+   * 3. Expose hasSavedCards & RSA public key for advanced card-on-file flows
+   *
+   * @param orderReference - The Nomba-generated order reference UUID
+   */
+  async getCheckoutOrder(orderReference: string): Promise<{
+    order: {
+      orderId: string;
+      orderReference: string;
+      customerId: string;
+      accountId: string;
+      callbackUrl: string;
+      customerEmail: string;
+      amount: string;
+      currency: string;
+      businessName: string;
+      businessEmail: string;
+      businessLogo: string;
+    };
+    hasSavedCards: boolean;
+    base64EncodedRsaPublicKey: string;
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.get<NombaCheckoutOrderDetailsResponse>(
+      `/v1/checkout/order/${encodeURIComponent(orderReference)}`,
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba getCheckoutOrder failed [${code}]: ${description}`
+      );
+    }
+
+    logger.info(
+      {
+        orderReference,
+        orderId: data.order.orderId,
+        amount: data.order.amount,
+        currency: data.order.currency,
+        hasSavedCards: data.hasSavedCards,
+      },
+      "Nomba checkout order details fetched"
+    );
+
+    return {
+      order: data.order,
+      hasSavedCards: data.hasSavedCards,
+      base64EncodedRsaPublicKey: data.base64EncodedRsaPublicKey,
     };
   }
 
