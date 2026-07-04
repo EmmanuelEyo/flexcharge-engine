@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function PortalEntry() {
+function PortalEntryContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
@@ -45,5 +45,18 @@ export default function PortalEntry() {
       <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-6"></div>
       <p className="text-slate-600 font-medium">Authenticating your secure session...</p>
     </div>
+  );
+}
+
+export default function PortalEntry() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center min-h-[50vh]">
+        <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-6"></div>
+        <p className="text-slate-600 font-medium">Authenticating your secure session...</p>
+      </div>
+    }>
+      <PortalEntryContent />
+    </Suspense>
   );
 }

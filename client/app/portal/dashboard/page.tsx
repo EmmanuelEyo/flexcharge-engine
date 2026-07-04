@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import portalApi from "@/lib/portalApi";
 import Button from "@/components/ui/Button";
 import { useSearchParams } from "next/navigation";
@@ -26,7 +26,7 @@ interface Invoice {
   createdAt: string;
 }
 
-export default function PortalDashboard() {
+function PortalDashboardContent() {
   const searchParams = useSearchParams();
   const { customer, loading: customerLoading } = usePortal();
   
@@ -383,5 +383,17 @@ export default function PortalDashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PortalDashboard() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="w-8 h-8 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
+      </div>
+    }>
+      <PortalDashboardContent />
+    </Suspense>
   );
 }
