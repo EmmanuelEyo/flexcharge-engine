@@ -145,4 +145,94 @@ test("Nomba Service Payload Construction", async (t) => {
       restoreNombaServiceMocks();
     }
   });
+
+  await t.test("builds a list tokenized cards request", async () => {
+    nombaService.clearTokenCache();
+
+    const requests: Array<{ path: string; params: any; headers: any }> = [];
+    (nombaService as any).client = {
+      get: async (path: string, options: any) => {
+        requests.push({ path, params: options.params, headers: options.headers });
+        return {
+          data: {
+            code: "00",
+            description: "Success",
+            data: {
+              nextPage: "2",
+              tokenizedCardDataList: [
+                {
+                  tokenKey: "tok_abc",
+                  customerEmail: "user@example.com",
+                  cardType: "Verve",
+                  cardPan: "1234********5678",
+                  tokenExpirationDate: "12/26",
+                },
+              ],
+            },
+          },
+        };
+      },
+    };
+    (nombaService as any).getValidToken = async () => "cached-token";
+
+    try {
+      const result = await nombaService.listTokenizedCards({
+        customerEmail: "user@example.com",
+        page: 0,
+      });
+
+      assert.strictEqual(requests.length, 1);
+      assert.strictEqual(requests[0]!.path, "/v1/checkout/tokenized-card-data");
+      assert.strictEqual(requests[0]!.params.customerEmail, "user@example.com");
+      assert.strictEqual(requests[0]!.params.page, 0);
+      assert.strictEqual(requests[0]!.headers.Authorization, "Bearer cached-token");
+      assert.strictEqual(result.nextPage, "2");
+      assert.strictEqual(result.total, 1);
+      assert.strictEqual(result.tokenizedCardDataList[0]!.tokenKey, "tok_abc");
+    } finally {
+      restoreNombaServiceMocks();
+    }
+  });
+
+  await t.test("builds a get user saved cards request", async () => {
+    nombaService.clearTokenCache();
+
+    const requests: Array<{ path: string; params: any; headers: any }> = [];
+    (nombaService as any).client = {
+      get: async (path: string, options: any) => {
+        requests.push({ path, params: options.params, headers: options.headers });
+        return {
+          data: {
+            code: "00",
+            description: "Success",
+            data: {
+              tokenizedCardData: [
+                {
+                  tokenKey: "tok_xyz",
+                  customerEmail: "user2@example.com",
+                  cardType: "Visa",
+                  cardPan: "4111********1111",
+                  tokenExpirationDate: "05/28",
+                },
+              ],
+            },
+          },
+        };
+      },
+    };
+    (nombaService as any).getValidToken = async () => "cached-token";
+
+    try {
+      const result = await nombaService.getUserSavedCards("order-ref-123", "999999");
+
+      assert.strictEqual(requests.length, 1);
+      assert.strictEqual(requests[0]!.path, "/v1/checkout/user-card/order-ref-123");
+      assert.strictEqual(requests[0]!.params.otp, "999999");
+      assert.strictEqual(requests[0]!.headers.Authorization, "Bearer cached-token");
+      assert.strictEqual(result.total, 1);
+      assert.strictEqual(result.tokenizedCardData[0]!.tokenKey, "tok_xyz");
+    } finally {
+      restoreNombaServiceMocks();
+    }
+  });
 });

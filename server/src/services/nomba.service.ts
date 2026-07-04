@@ -160,6 +160,59 @@ interface NombaCheckoutTransactionResponse {
   };
 }
 
+/**
+ * A single tokenized card record.
+ * Shared shape returned by both:
+ *   - GET /v1/checkout/tokenized-card-data        (merchant list — all tokenized cards)
+ *   - GET /v1/checkout/user-card/{orderReference} (user saved cards — OTP-gated)
+ */
+export interface NombaTokenizedCardItem {
+  /** The token key — use this as `tokenKey` when charging */
+  tokenKey: string;
+  /** Customer email associated with this card */
+  customerEmail: string;
+  /** Card network/type e.g. "Verve", "Mastercard", "Visa" */
+  cardType: string;
+  /** Masked card PAN e.g. "234818********7580" */
+  cardPan: string;
+  /** Token expiration date in MM/YY format e.g. "20/20" */
+  tokenExpirationDate: string;
+}
+
+/**
+ * Response shape for GET /v1/checkout/tokenized-card-data
+ * Lists all of the merchant's tokenized cards with optional filters.
+ *
+ * Query params: customerEmail, startDate, endDate, page (0-indexed)
+ * Header: accountId (required — parent account UUID)
+ */
+interface NombaListTokenizedCardsResponse {
+  code: string;
+  description: string;
+  data: {
+    /** Next page number as a string integer; "0" means no more pages */
+    nextPage: string;
+    tokenizedCardDataList: NombaTokenizedCardItem[];
+  };
+}
+
+/**
+ * Response shape for GET /v1/checkout/user-card/{orderReference}
+ * Gets the saved cards for a specific customer, gated by an OTP.
+ *
+ * Requires:
+ *  - Path:  orderReference (the original checkout order reference)
+ *  - Query: otp            (one-time code sent to the user's mobile number via
+ *                           POST /checkout/user-card/saved-card/auth)
+ */
+interface NombaGetUserSavedCardsResponse {
+  code: string;
+  description: string;
+  data: {
+    tokenizedCardData: NombaTokenizedCardItem[];
+  };
+}
+
 export type NombaPaymentMethod =
   | "Card"
   | "Transfer"
@@ -956,6 +1009,139 @@ class NombaService {
     );
 
     return { status: response.data.data?.status || "SUCCESS" };
+  }
+
+  // ============================================================
+  // TOKENIZED CARD MANAGEMENT
+  // Online Checkout: GET /v1/checkout/tokenized-card-data
+  // Charge:         GET /v1/checkout/user-card/{orderReference}
+  // ============================================================
+
+  /**
+   * List all of the merchant's tokenized cards.
+   *
+   * Per Nomba API: GET /v1/checkout/tokenized-card-data
+   * Header: accountId (required — parent account UUID)
+   * Query params:
+   *   - customerEmail: filter by customer email
+   *   - startDate:     ISO date string, start of creation window
+   *   - endDate:       ISO date string, end of creation window
+   *   - page:          0-indexed page number (omit for first page)
+   *
+   * @returns Paginated list of tokenized card records + nextPage cursor
+   */
+  async listTokenizedCards(params?: {
+    customerEmail?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+  }): Promise<{
+    nextPage: string;
+    tokenizedCardDataList: NombaTokenizedCardItem[];
+    total: number;
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    // Build query params — only include keys that were provided
+    const queryParams: Record<string, string | number> = {};
+    if (params?.customerEmail) queryParams.customerEmail = params.customerEmail;
+    if (params?.startDate)     queryParams.startDate = params.startDate;
+    if (params?.endDate)       queryParams.endDate = params.endDate;
+    if (params?.page !== undefined) queryParams.page = params.page;
+
+    const response = await this.client.get<NombaListTokenizedCardsResponse>(
+      "/v1/checkout/tokenized-card-data",
+      {
+        headers: authHeaders,
+        params: queryParams,
+      }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba listTokenizedCards failed: [${code}] ${description}`
+      );
+    }
+
+    const list = data.tokenizedCardDataList ?? [];
+
+    logger.info(
+      {
+        count: list.length,
+        nextPage: data.nextPage,
+        filters: params ?? {},
+      },
+      "Nomba tokenized card list fetched"
+    );
+
+    return {
+      nextPage: data.nextPage ?? "0",
+      tokenizedCardDataList: list,
+      total: list.length,
+    };
+  }
+
+  /**
+   * Get the saved cards for a specific user, gated by an OTP.
+   *
+   * Per Nomba API: GET /v1/checkout/user-card/{orderReference}
+   *
+   * Prerequisites:
+   *  1. Merchant called POST /v1/checkout/user-card/saved-card/auth to trigger OTP
+   *  2. User received OTP on their registered mobile number
+   *  3. Caller passes that OTP here as the `otp` query param
+   *
+   * @param orderReference - The original checkout order reference
+   * @param otp            - One-time code sent to the user's mobile number
+   * @returns Array of tokenized card records for this user
+   */
+  async getUserSavedCards(
+    orderReference: string,
+    otp: string
+  ): Promise<{
+    tokenizedCardData: NombaTokenizedCardItem[];
+    total: number;
+  }> {
+    if (!orderReference || !otp) {
+      throw new Error(
+        "getUserSavedCards: both orderReference and otp are required"
+      );
+    }
+
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.get<NombaGetUserSavedCardsResponse>(
+      `/v1/checkout/user-card/${encodeURIComponent(orderReference)}`,
+      {
+        headers: authHeaders,
+        params: { otp },
+      }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba getUserSavedCards failed: [${code}] ${description}`
+      );
+    }
+
+    const cards = data.tokenizedCardData ?? [];
+
+    logger.info(
+      {
+        orderReference,
+        cardCount: cards.length,
+      },
+      "Nomba user saved cards fetched"
+    );
+
+    return {
+      tokenizedCardData: cards,
+      total: cards.length,
+    };
   }
 
   // ============================================================
