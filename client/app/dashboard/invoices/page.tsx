@@ -36,6 +36,7 @@ export default function InvoicesPage() {
     setIsRefundModalOpen(true);
     setBankCode("");
     setAccountNumber("");
+    setError("");
   };
 
   const handleRefund = async (e: React.FormEvent) => {
@@ -43,10 +44,11 @@ export default function InvoicesPage() {
     if (!selectedInvoice) return;
     try {
       setRefundLoading(true);
+      setError("");
       await api.post("/ledger/v1/refunds", {
         invoiceId: selectedInvoice._id,
         bankCode,
-        accountNumber
+        accountNumber,
       });
       setIsRefundModalOpen(false);
       setSelectedInvoice(null);
@@ -102,7 +104,7 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      {error && (
+      {error && !isRefundModalOpen && (
         <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-xl flex items-center border border-red-100">
           <span className="material-symbols-outlined mr-2">error</span>
           {error}
@@ -194,6 +196,13 @@ export default function InvoicesPage() {
               </button>
             </div>
             
+            {error && (
+              <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-xl flex items-start border border-red-100 text-sm">
+                <span className="material-symbols-outlined mr-2 text-[20px] flex-shrink-0">error</span>
+                <span>{error}</span>
+              </div>
+            )}
+
             <form onSubmit={handleRefund}>
               <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-100 flex justify-between items-center">
                 <span className="text-sm font-medium text-slate-600">Refund Amount</span>

@@ -188,13 +188,13 @@ export default function LedgerPage() {
                   <th className="py-4 px-6 font-semibold text-sm text-slate-500 uppercase tracking-wider">Type</th>
                   <th className="py-4 px-6 font-semibold text-sm text-slate-500 uppercase tracking-wider">Description</th>
                   <th className="py-4 px-6 font-semibold text-sm text-slate-500 uppercase tracking-wider text-right">Amount</th>
-                  <th className="py-4 px-6 font-semibold text-sm text-slate-500 uppercase tracking-wider text-right">Balance After</th>
+                  <th className="py-4 px-6 font-semibold text-sm text-slate-500 uppercase tracking-wider text-center">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {data?.recentTransactions && data.recentTransactions.length > 0 ? (
                   data.recentTransactions.map((tx) => {
-                    const isCredit = tx.type === "credit";
+                    const isCredit = tx.type.toLowerCase() === "credit";
                     return (
                       <tr key={tx._id} className="hover:bg-slate-50/50 transition-colors group">
                         <td className="py-4 px-6 text-sm text-slate-600">
@@ -220,8 +220,18 @@ export default function LedgerPage() {
                             {isCredit ? "+" : "-"}{formatCurrency(tx.amount)}
                           </span>
                         </td>
-                        <td className="py-4 px-6 text-sm text-right font-medium text-slate-600">
-                          {formatCurrency(tx.balanceAfter)}
+                        <td className="py-4 px-6 text-center">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium border ${
+                              tx.status === "SUCCESS"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : tx.status === "PENDING"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-red-50 text-red-700 border-red-200"
+                            }`}
+                          >
+                            {tx.status ? tx.status.charAt(0).toUpperCase() + tx.status.slice(1).toLowerCase() : "Success"}
+                          </span>
                         </td>
                       </tr>
                     );
