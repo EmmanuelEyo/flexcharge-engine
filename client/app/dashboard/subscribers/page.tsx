@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Button from "@/components/ui/Button";
+import api from "@/lib/api";
+import ChangePlanModal from "@/components/dashboard/ChangePlanModal";
 
-export type SubscriberStatus = "active" | "past_due" | "cancelled" | "paused";
+export type SubscriberStatus = "active" | "past_due" | "canceled" | "paused" | "trialing" | "unpaid" | "pending";
 
 export interface Subscriber {
   id: string;
@@ -17,97 +19,6 @@ export interface Subscriber {
   since: string;
   avatar?: string;
 }
-
-const MOCK_SUBSCRIBERS: Subscriber[] = [
-  {
-    id: "sub_001",
-    name: "Adekunle Gold",
-    email: "adekunle@example.com",
-    plan: "Pro Monthly",
-    planColor: "bg-indigo-50 text-indigo-700",
-    status: "active",
-    amount: "₦25,000",
-    nextBilling: "Nov 24, 2023",
-    since: "Oct 24, 2023",
-  },
-  {
-    id: "sub_002",
-    name: "Sarah Jenkins",
-    email: "sarah.j@acmecorp.com",
-    plan: "Basic Monthly",
-    planColor: "bg-sky-50 text-sky-700",
-    status: "past_due",
-    amount: "₦5,000",
-    nextBilling: "Nov 23, 2023",
-    since: "Sep 23, 2023",
-  },
-  {
-    id: "sub_003",
-    name: "Michael Chen",
-    email: "m.chen@techfirm.io",
-    plan: "Enterprise",
-    planColor: "bg-purple-50 text-purple-700",
-    status: "active",
-    amount: "₦150,000",
-    nextBilling: "Nov 3, 2024",
-    since: "Aug 3, 2023",
-  },
-  {
-    id: "sub_004",
-    name: "Amara Okafor",
-    email: "amara@startup.ng",
-    plan: "Pro Monthly",
-    planColor: "bg-indigo-50 text-indigo-700",
-    status: "active",
-    amount: "₦25,000",
-    nextBilling: "Nov 22, 2023",
-    since: "Oct 22, 2023",
-  },
-  {
-    id: "sub_005",
-    name: "David Mensah",
-    email: "david.m@fintech.gh",
-    plan: "Basic Monthly",
-    planColor: "bg-sky-50 text-sky-700",
-    status: "cancelled",
-    amount: "₦5,000",
-    nextBilling: "—",
-    since: "Jul 10, 2023",
-  },
-  {
-    id: "sub_006",
-    name: "Fatima Al-Rashid",
-    email: "fatima@ventures.ae",
-    plan: "Enterprise",
-    planColor: "bg-purple-50 text-purple-700",
-    status: "active",
-    amount: "₦150,000",
-    nextBilling: "Dec 1, 2023",
-    since: "Oct 1, 2023",
-  },
-  {
-    id: "sub_007",
-    name: "Chidi Nwosu",
-    email: "chidi@devhub.ng",
-    plan: "Pro Monthly",
-    planColor: "bg-indigo-50 text-indigo-700",
-    status: "paused",
-    amount: "₦25,000",
-    nextBilling: "—",
-    since: "Jun 15, 2023",
-  },
-  {
-    id: "sub_008",
-    name: "Yemi Adeyemi",
-    email: "yemi@boldstudio.io",
-    plan: "Basic Monthly",
-    planColor: "bg-sky-50 text-sky-700",
-    status: "active",
-    amount: "₦5,000",
-    nextBilling: "Nov 20, 2023",
-    since: "Oct 20, 2023",
-  },
-];
 
 function getInitials(name: string) {
   return name
@@ -141,12 +52,17 @@ const STATUS_CONFIG: Record<
     dot: "bg-emerald-500",
     badge: "bg-emerald-50 text-emerald-700 border-emerald-100",
   },
+  trialing: {
+    label: "Trialing",
+    dot: "bg-emerald-400",
+    badge: "bg-emerald-50 text-emerald-600 border-emerald-100",
+  },
   past_due: {
     label: "Past Due",
     dot: "bg-amber-500",
     badge: "bg-amber-50 text-amber-700 border-amber-100",
   },
-  cancelled: {
+  canceled: {
     label: "Cancelled",
     dot: "bg-slate-400",
     badge: "bg-slate-100 text-slate-500 border-slate-200",
@@ -156,6 +72,16 @@ const STATUS_CONFIG: Record<
     dot: "bg-blue-400",
     badge: "bg-blue-50 text-blue-600 border-blue-100",
   },
+  unpaid: {
+    label: "Unpaid",
+    dot: "bg-red-500",
+    badge: "bg-red-50 text-red-700 border-red-100",
+  },
+  pending: {
+    label: "Pending",
+    dot: "bg-slate-300",
+    badge: "bg-slate-50 text-slate-600 border-slate-200",
+  },
 };
 
 type FilterTab = "all" | SubscriberStatus;
@@ -164,7 +90,7 @@ const FILTER_TABS: { value: FilterTab; label: string }[] = [
   { value: "active", label: "Active" },
   { value: "past_due", label: "Past Due" },
   { value: "paused", label: "Paused" },
-  { value: "cancelled", label: "Cancelled" },
+  { value: "canceled", label: "Cancelled" },
 ];
 
 const PER_PAGE = 6;
@@ -195,12 +121,32 @@ function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
 function SubscriberDrawer({
   subscriber,
   onClose,
+  onUpdate,
 }: {
   subscriber: Subscriber | null;
   onClose: () => void;
+  onUpdate: () => void;
 }) {
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [showChangePlan, setShowChangePlan] = useState(false);
+
   if (!subscriber) return null;
   const cfg = STATUS_CONFIG[subscriber.status];
+
+  const handleAction = async (action: 'pause' | 'resume' | 'cancel') => {
+    try {
+      setLoadingAction(action);
+      await api.post(`/subscriptions/${subscriber.id}/${action}`);
+      onUpdate();
+      if (action === 'cancel') {
+        onClose();
+      }
+    } catch (error) {
+      console.error(`Failed to ${action} subscription:`, error);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
 
   return (
     <>
@@ -208,6 +154,17 @@ function SubscriberDrawer({
         className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px]"
         onClick={onClose}
       />
+      {showChangePlan && (
+        <ChangePlanModal 
+          subscriptionId={subscriber.id} 
+          currentPlanName={subscriber.plan} 
+          onClose={() => setShowChangePlan(false)} 
+          onUpdate={() => {
+            onUpdate();
+            onClose(); // Close drawer after plan change
+          }} 
+        />
+      )}
       <div className="fixed right-0 top-0 h-full z-50 w-full max-w-sm bg-white shadow-2xl flex flex-col border-l border-slate-200 animate-slide-in">
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
           <h3 className="text-base font-semibold text-slate-900">
@@ -269,18 +226,6 @@ function SubscriberDrawer({
             <div className="space-y-3">
               {[
                 {
-                  icon: "check_circle",
-                  color: "text-emerald-500",
-                  label: "Payment successful",
-                  time: "Oct 24, 2023",
-                },
-                {
-                  icon: "email",
-                  color: "text-slate-400",
-                  label: "Invoice sent",
-                  time: "Oct 24, 2023",
-                },
-                {
                   icon: "person_add",
                   color: "text-indigo-500",
                   label: "Subscribed to plan",
@@ -303,28 +248,47 @@ function SubscriberDrawer({
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
-          {subscriber.status === "active" ? (
-            <button className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors text-sm font-medium">
-              <span className="material-symbols-outlined text-[16px] leading-none">
-                pause
-              </span>
-              Pause
+        <div className="px-6 py-4 border-t border-slate-100 flex flex-col gap-3">
+          {(subscriber.status === "active" || subscriber.status === "trialing") && (
+            <button 
+              onClick={() => setShowChangePlan(true)}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors text-sm font-medium"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">swap_horiz</span>
+              Change Plan
             </button>
-          ) : subscriber.status === "paused" ? (
-            <button className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors text-sm font-medium">
-              <span className="material-symbols-outlined text-[16px] leading-none">
-                play_arrow
-              </span>
-              Resume
-            </button>
-          ) : null}
-          <button className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-colors text-sm font-medium">
-            <span className="material-symbols-outlined text-[16px] leading-none">
-              cancel
-            </span>
-            Cancel
-          </button>
+          )}
+          <div className="flex gap-3">
+            {subscriber.status === "active" ? (
+              <button 
+                onClick={() => handleAction('pause')}
+                disabled={!!loadingAction}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {loadingAction === 'pause' ? <span className="material-symbols-outlined animate-spin text-[16px] leading-none">sync</span> : <span className="material-symbols-outlined text-[16px] leading-none">pause</span>}
+                Pause
+              </button>
+            ) : subscriber.status === "paused" ? (
+              <button 
+                onClick={() => handleAction('resume')}
+                disabled={!!loadingAction}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {loadingAction === 'resume' ? <span className="material-symbols-outlined animate-spin text-[16px] leading-none">sync</span> : <span className="material-symbols-outlined text-[16px] leading-none">play_arrow</span>}
+                Resume
+              </button>
+            ) : null}
+            {subscriber.status !== "canceled" && (
+              <button 
+                onClick={() => handleAction('cancel')}
+                disabled={!!loadingAction}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {loadingAction === 'cancel' ? <span className="material-symbols-outlined animate-spin text-[16px] leading-none">sync</span> : <span className="material-symbols-outlined text-[16px] leading-none">cancel</span>}
+                Cancel
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </>
@@ -332,14 +296,45 @@ function SubscriberDrawer({
 }
 
 export default function SubscribersPage() {
+  const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Subscriber | null>(null);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
 
+  const fetchSubscribers = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await api.get("/subscriptions");
+      if (res.data?.data) {
+        const mapped = res.data.data.map((sub: any) => ({
+          id: sub._id,
+          name: sub.customerId?.name || "Unknown",
+          email: sub.customerId?.email || "",
+          plan: sub.planId?.name || "Unknown Plan",
+          planColor: "bg-indigo-50 text-indigo-700",
+          status: sub.status,
+          amount: new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format((sub.planId?.amount || 0) / 100),
+          nextBilling: sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—",
+          since: new Date(sub.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        }));
+        setSubscribers(mapped);
+      }
+    } catch (error) {
+      console.error("Failed to fetch subscriptions:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSubscribers();
+  }, [fetchSubscribers]);
+
   const filtered = useMemo(() => {
-    return MOCK_SUBSCRIBERS.filter((s) => {
+    return subscribers.filter((s) => {
       const matchesFilter =
         activeFilter === "all" || s.status === activeFilter;
       const q = search.toLowerCase();
@@ -350,7 +345,7 @@ export default function SubscribersPage() {
         s.plan.toLowerCase().includes(q);
       return matchesFilter && matchesSearch;
     });
-  }, [search, activeFilter]);
+  }, [search, activeFilter, subscribers]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
@@ -371,22 +366,40 @@ export default function SubscribersPage() {
     setTimeout(() => setCopiedEmail(null), 2000);
   }
 
+  const handleExportCSV = () => {
+    if (subscribers.length === 0) return;
+    const headers = ["Name", "Email", "Plan", "Status", "Amount", "Next Billing", "Member Since"];
+    const rows = subscribers.map(s => [
+      `"${s.name}"`, `"${s.email}"`, `"${s.plan}"`, s.status, `"${s.amount}"`, `"${s.nextBilling}"`, `"${s.since}"`
+    ]);
+    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `subscribers_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const stats = useMemo(() => {
-    const all = MOCK_SUBSCRIBERS;
+    const all = subscribers;
     return {
       total: all.length,
       active: all.filter((s) => s.status === "active").length,
       pastDue: all.filter((s) => s.status === "past_due").length,
-      cancelled: all.filter((s) => s.status === "cancelled").length,
+      canceled: all.filter((s) => s.status === "canceled").length,
       paused: all.filter((s) => s.status === "paused").length,
     };
-  }, []);
+  }, [subscribers]);
 
   return (
     <>
       <SubscriberDrawer
         subscriber={selected}
         onClose={() => setSelected(null)}
+        onUpdate={fetchSubscribers}
       />
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
@@ -399,7 +412,7 @@ export default function SubscribersPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="secondary" icon="download" size="md">
+          <Button variant="secondary" icon="download" size="md" onClick={handleExportCSV}>
             Export
           </Button>
           <Button variant="primary" icon="person_add" size="md">
@@ -430,7 +443,7 @@ export default function SubscribersPage() {
           },
           {
             label: "Paused / Cancelled",
-            value: stats.paused + stats.cancelled,
+            value: stats.paused + stats.canceled,
             icon: "pause_circle",
             color: "bg-slate-100 text-slate-500",
           },
@@ -456,7 +469,7 @@ export default function SubscribersPage() {
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
 
         <div className="px-4 pt-4 pb-0 border-b border-slate-100 space-y-3">
           <div className="flex items-center gap-3">
@@ -492,8 +505,8 @@ export default function SubscribersPage() {
             {FILTER_TABS.map((tab) => {
               const count =
                 tab.value === "all"
-                  ? MOCK_SUBSCRIBERS.length
-                  : MOCK_SUBSCRIBERS.filter((s) => s.status === tab.value).length;
+                  ? subscribers.length
+                  : subscribers.filter((s) => s.status === tab.value).length;
               const isActive = activeFilter === tab.value;
               return (
                 <button
@@ -519,7 +532,7 @@ export default function SubscribersPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[300px]">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/60 border-b border-slate-100">
@@ -536,8 +549,16 @@ export default function SubscribersPage() {
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50 text-sm">
-              {paginated.length === 0 ? (
+            <tbody className="divide-y divide-slate-50 text-sm relative">
+              {loading && paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-20 text-center">
+                    <div className="flex justify-center">
+                      <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                    </div>
+                  </td>
+                </tr>
+              ) : paginated.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-20 text-center">
                     <div className="flex flex-col items-center gap-3 text-slate-400">
@@ -600,8 +621,9 @@ export default function SubscribersPage() {
                     <td className="py-3.5 px-5">
                       <span
                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${sub.planColor}`}
+                        title={sub.plan}
                       >
-                        {sub.plan}
+                        <span className="max-w-[100px] truncate">{sub.plan}</span>
                       </span>
                     </td>
 
@@ -663,7 +685,7 @@ export default function SubscribersPage() {
             </p>
 
             <div className="flex items-center gap-1">
-              <button
+               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"

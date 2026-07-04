@@ -139,7 +139,7 @@ export async function requestWithdrawal(req: Request, res: Response): Promise<vo
  */
 export async function processRefund(req: Request, res: Response): Promise<void> {
   try {
-    const tenantId = req.tenantId;
+    const tenantId = req.tenantId!;
     const { invoiceId, accountNumber, bankCode } = req.body;
 
     if (!invoiceId || !accountNumber || !bankCode) {
