@@ -46,14 +46,50 @@ interface NombaCheckoutOrderResponse {
   };
 }
 
+/**
+ * Response shape for GET /v1/checkout/order/{orderReference}
+ * Matches the Nomba API spec exactly.
+ */
+interface NombaCheckoutOrderDetailsResponse {
+  code: string;
+  description: string;
+  data: {
+    order: {
+      orderId: string;
+      orderReference: string;
+      customerId: string;
+      accountId: string;
+      callbackUrl: string;
+      customerEmail: string;
+      amount: string;         // Decimal string e.g. "10000.00"
+      currency: string;       // "NGN"
+      businessName: string;
+      businessEmail: string;
+      businessLogo: string;
+    };
+    hasSavedCards: boolean;
+    base64EncodedRsaPublicKey: string;
+  };
+}
+
+/**
+ * Response shape for POST /v1/checkout/tokenized-card-payment
+ * Matches the Nomba API spec exactly.
+ *
+ * The docs show:
+ *   { "code": "00", "description": "Success", "data": { "status": true, "message": "success" } }
+ *
+ * NOTE: status is a BOOLEAN (or boolean string "true"/"false") per docs —
+ * NOT "SUCCESS"/"APPROVED". The outer `code` field is the primary success indicator.
+ */
 interface NombaTokenizedChargeResponse {
   code: string;
   description: string;
   data: {
-    status: string;
-    transactionId?: string;
+    // Nomba returns this as boolean true/false per their docs
+    // In practice may arrive as string "true"/"false" — we normalise it below
+    status: boolean | string;
     message?: string;
-    code?: string; // Decline code for failed charges
   };
 }
 
@@ -71,6 +107,109 @@ interface NombaTransactionStatusResponse {
       cardLast4: string;
       cardBrand: string;
     };
+  };
+}
+
+/**
+ * Response shape for GET /v1/checkout/transaction
+ * Matches the Nomba API spec exactly.
+ *
+ * NOTE: This is DIFFERENT from verifyTransaction which calls
+ * /v1/transactions/accounts/{subAccountId}/single (the ledger/Transactions API).
+ * This endpoint is the dedicated *checkout* transaction status endpoint.
+ */
+interface NombaCheckoutTransactionResponse {
+  code: string;
+  description: string;
+  data: {
+    success: boolean;         // true = transaction completed and approved
+    message: string;          // human-readable status e.g. "success"
+    order: {
+      orderId: string;
+      orderReference: string;
+      customerId: string;
+      accountId: string;
+      callbackUrl: string;
+      customerEmail: string;
+      amount: string;         // Decimal Naira string e.g. "10000.00"
+      currency: string;       // "NGN"
+    };
+    transactionDetails?: {
+      transactionDate: string;          // ISO 8601 datetime
+      paymentReference: string;
+      paymentVendorReference: string;
+      tokenizedCardPayment: boolean;    // true if paid via tokenized card
+      statusCode: string;               // e.g. "Payment approved"
+    };
+    transferDetails?: {
+      sessionId: string;
+      beneficiaryAccountName: string;
+      beneficiaryAccountNumber: string;
+      originatorAccountName: string;
+      originatorAccountNumber: string;
+      narration: string;
+      destinationInstitutionCode: string;
+      paymentReference: string;
+    };
+    cardDetails?: {
+      cardPan: string;        // Masked PAN e.g. "515123 **** **** 6667"
+      cardType: string;       // e.g. "Verve"
+      cardCurrency: string;   // e.g. "NGN"
+      cardBank: string;       // Bank code e.g. "057"
+    };
+  };
+}
+
+/**
+ * A single tokenized card record.
+ * Shared shape returned by both:
+ *   - GET /v1/checkout/tokenized-card-data        (merchant list — all tokenized cards)
+ *   - GET /v1/checkout/user-card/{orderReference} (user saved cards — OTP-gated)
+ */
+export interface NombaTokenizedCardItem {
+  /** The token key — use this as `tokenKey` when charging */
+  tokenKey: string;
+  /** Customer email associated with this card */
+  customerEmail: string;
+  /** Card network/type e.g. "Verve", "Mastercard", "Visa" */
+  cardType: string;
+  /** Masked card PAN e.g. "234818********7580" */
+  cardPan: string;
+  /** Token expiration date in MM/YY format e.g. "20/20" */
+  tokenExpirationDate: string;
+}
+
+/**
+ * Response shape for GET /v1/checkout/tokenized-card-data
+ * Lists all of the merchant's tokenized cards with optional filters.
+ *
+ * Query params: customerEmail, startDate, endDate, page (0-indexed)
+ * Header: accountId (required — parent account UUID)
+ */
+interface NombaListTokenizedCardsResponse {
+  code: string;
+  description: string;
+  data: {
+    /** Next page number as a string integer; "0" means no more pages */
+    nextPage: string;
+    tokenizedCardDataList: NombaTokenizedCardItem[];
+  };
+}
+
+/**
+ * Response shape for GET /v1/checkout/user-card/{orderReference}
+ * Gets the saved cards for a specific customer, gated by an OTP.
+ *
+ * Requires:
+ *  - Path:  orderReference (the original checkout order reference)
+ *  - Query: otp            (one-time code sent to the user's mobile number via
+ *                           POST /checkout/user-card/saved-card/auth)
+ */
+interface NombaGetUserSavedCardsResponse {
+  code: string;
+  description: string;
+  data: {
+    tokenizedCardData: NombaTokenizedCardItem[];
   };
 }
 
@@ -120,12 +259,33 @@ export interface CreateCheckoutParams {
 }
 
 export interface ChargeTokenizedCardParams {
+  /** The token key returned by Nomba's tokenization webhook */
   tokenKey: string;
+  /** Merchant-supplied order reference (idempotency key for this charge) */
   orderReference: string;
-  amount: number;         // In KOBO — we convert to NGN string for Nomba
-  currency?: string;
+  /** Charge amount in KOBO — converted to Naira decimal string before sending to Nomba */
+  amount: number;
+  /** ISO 4217 currency. Use NGN for Nigeria, CDF/USD for DRC. Defaults to NGN. */
+  currency?: "NGN" | "CDF" | "USD";
+  /** Customer email — required by Nomba within the order object */
   customerEmail: string;
+  /** Optional: customer identifier for Nomba's records */
   customerId?: string;
+  /**
+   * Required by Nomba per docs when sending the order object.
+   * For server-side recurring charges, defaults to the frontend success page.
+   * Nomba uses this URL to redirect the customer after payment (not applicable
+   * for server-side tokenized charges, but the field is required in the API).
+   */
+  callbackUrl?: string;
+  /** Optional: sub-account where funds will be deposited. Defaults to NOMBA_SUB_ACCOUNT_ID. */
+  accountId?: string;
+  /** Optional: restrict which payment methods appear on the checkout page */
+  allowedPaymentMethods?: NombaPaymentMethod[];
+  /** Optional: split the inflow across multiple accounts */
+  splitRequest?: NombaSplitRequest;
+  /** Optional: arbitrary key-value metadata attached to the order */
+  orderMetaData?: Record<string, string>;
 }
 
 // ============================================================
@@ -434,6 +594,71 @@ class NombaService {
   }
 
   // ============================================================
+  // GET CHECKOUT ORDER DETAILS
+  // Per Nomba API: GET /v1/checkout/order/{orderReference}
+  // ============================================================
+
+  /**
+   * Fetch a single checkout order by its orderReference.
+   *
+   * Used to:
+   * 1. Verify order status from the FlexCharge invoice dashboard
+   * 2. Surface Nomba business/customer metadata alongside our invoice record
+   * 3. Expose hasSavedCards & RSA public key for advanced card-on-file flows
+   *
+   * @param orderReference - The Nomba-generated order reference UUID
+   */
+  async getCheckoutOrder(orderReference: string): Promise<{
+    order: {
+      orderId: string;
+      orderReference: string;
+      customerId: string;
+      accountId: string;
+      callbackUrl: string;
+      customerEmail: string;
+      amount: string;
+      currency: string;
+      businessName: string;
+      businessEmail: string;
+      businessLogo: string;
+    };
+    hasSavedCards: boolean;
+    base64EncodedRsaPublicKey: string;
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.get<NombaCheckoutOrderDetailsResponse>(
+      `/v1/checkout/order/${encodeURIComponent(orderReference)}`,
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba getCheckoutOrder failed [${code}]: ${description}`
+      );
+    }
+
+    logger.info(
+      {
+        orderReference,
+        orderId: data.order.orderId,
+        amount: data.order.amount,
+        currency: data.order.currency,
+        hasSavedCards: data.hasSavedCards,
+      },
+      "Nomba checkout order details fetched"
+    );
+
+    return {
+      order: data.order,
+      hasSavedCards: data.hasSavedCards,
+      base64EncodedRsaPublicKey: data.base64EncodedRsaPublicKey,
+    };
+  }
+
+  // ============================================================
   // TOKENIZED CARD CHARGE (Recurring Billing)
   // Per AGENTS.md §2.1: POST /v1/checkout/tokenized-card-payment
   // ============================================================
@@ -449,46 +674,86 @@ class NombaService {
   async chargeTokenizedCard(
     params: ChargeTokenizedCardParams
   ): Promise<{
-    status: string;
-    transactionId?: string;
-    declineCode?: string;
-    message?: string;
+    /**
+     * True when Nomba's outer `code === "00"` AND `data.status` is truthy.
+     * This is the canonical success indicator to check in the billing engine.
+     * DO NOT check for string values like "SUCCESS" or "APPROVED" — Nomba
+     * returns a boolean (or boolean string) for this endpoint.
+     */
+    success: boolean;
+    message: string;
   }> {
     const authHeaders = await this.getAuthHeaders();
 
-    // Convert KOBO to NGN decimal string
+    // Convert KOBO (integer) to Naira decimal string for Nomba
+    // e.g., 500000 kobo → "5000.00"
     const amountInNaira = (params.amount / 100).toFixed(2);
+
+    // Build the order object — callbackUrl is required by Nomba when sending order.
+    // For server-side recurring charges there is no customer redirect, so we
+    // fall back to the frontend URL as a safe no-op callback.
+    const orderPayload: Record<string, unknown> = {
+      orderReference: params.orderReference,
+      amount: amountInNaira,
+      currency: params.currency ?? "NGN",
+      customerEmail: params.customerEmail,
+      customerId: params.customerId ?? params.orderReference,
+      accountId: params.accountId ?? env.NOMBA_SUB_ACCOUNT_ID,
+      // Required per Nomba docs when the order object is present
+      callbackUrl: params.callbackUrl ?? `${env.FRONTEND_URL}/billing/complete`,
+    };
+
+    // Conditionally include optional fields — omit when absent to keep payload lean
+    if (params.allowedPaymentMethods && params.allowedPaymentMethods.length > 0) {
+      orderPayload.allowedPaymentMethods = params.allowedPaymentMethods;
+    }
+    if (params.splitRequest) {
+      orderPayload.splitRequest = params.splitRequest;
+    }
+    if (params.orderMetaData && Object.keys(params.orderMetaData).length > 0) {
+      orderPayload.orderMetaData = params.orderMetaData;
+    }
 
     const response = await this.client.post<NombaTokenizedChargeResponse>(
       "/v1/checkout/tokenized-card-payment",
       {
         tokenKey: params.tokenKey,
-        order: {
-          orderReference: params.orderReference,
-          amount: amountInNaira,
-          currency: params.currency || "NGN",
-          customerEmail: params.customerEmail,
-          customerId: params.customerId || params.orderReference,
-          accountId: env.NOMBA_SUB_ACCOUNT_ID,
-        },
+        order: orderPayload,
       },
       { headers: authHeaders }
     );
 
+    const { code, description, data } = response.data;
+
+    // Primary success gate: Nomba outer response code must be "00"
+    const outerSuccess = code === "00";
+
+    // Normalise data.status — Nomba docs show boolean but field may arrive as
+    // string "true"/"false" depending on SDK version. Handle both defensively.
+    const statusRaw = data.status;
+    const innerSuccess =
+      statusRaw === true ||
+      statusRaw === "true" ||
+      (typeof statusRaw === "string" && statusRaw.toLowerCase() === "true");
+
+    const success = outerSuccess && innerSuccess;
+    const message = data.message ?? description ?? (success ? "success" : "failed");
+
     logger.info(
       {
         orderReference: params.orderReference,
-        status: response.data.data.status,
+        tokenKey: params.tokenKey,
+        outerCode: code,
+        innerStatus: statusRaw,
+        success,
+        message,
+        amountNaira: amountInNaira,
+        currency: params.currency ?? "NGN",
       },
       "Nomba tokenized card charge completed"
     );
 
-    return {
-      status: response.data.data.status,
-      transactionId: response.data.data.transactionId,
-      declineCode: response.data.data.code,
-      message: response.data.data.message,
-    };
+    return { success, message };
   }
 
   // ============================================================
@@ -542,6 +807,110 @@ class NombaService {
       transactionId: response.data.data.transactionId,
       transactionRef: response.data.data.transactionRef,
       tokenizedCardData: response.data.data.tokenizedCardData,
+    };
+  }
+
+  // ============================================================
+  // FETCH CHECKOUT TRANSACTION
+  // Per Nomba API: GET /v1/checkout/transaction
+  // ============================================================
+
+  /**
+   * Fetch the live status and full details of a checkout transaction.
+   *
+   * This is the dedicated checkout transaction status endpoint.
+   * It supports two query modes via the `idType` parameter:
+   *   - ORDER_REFERENCE: uses the merchant-supplied reference string
+   *   - ORDER_ID:        uses the UUID returned by Nomba when the order was created
+   *
+   * NOTE: This is DIFFERENT from `verifyTransaction()` which queries the
+   * sub-account Transactions ledger API for internal billing reconciliation.
+   * Use THIS method when you want the full checkout transaction breakdown
+   * (card details, transfer details, tokenization status) from the checkout flow.
+   *
+   * @param id     - The ORDER_ID or ORDER_REFERENCE value
+   * @param idType - Which id type to use (defaults to ORDER_REFERENCE)
+   */
+  async fetchCheckoutTransaction(
+    id: string,
+    idType: "ORDER_ID" | "ORDER_REFERENCE" = "ORDER_REFERENCE"
+  ): Promise<{
+    success: boolean;
+    message: string;
+    order: {
+      orderId: string;
+      orderReference: string;
+      customerId: string;
+      accountId: string;
+      callbackUrl: string;
+      customerEmail: string;
+      amount: string;
+      currency: string;
+    };
+    transactionDetails?: {
+      transactionDate: string;
+      paymentReference: string;
+      paymentVendorReference: string;
+      tokenizedCardPayment: boolean;
+      statusCode: string;
+    };
+    transferDetails?: {
+      sessionId: string;
+      beneficiaryAccountName: string;
+      beneficiaryAccountNumber: string;
+      originatorAccountName: string;
+      originatorAccountNumber: string;
+      narration: string;
+      destinationInstitutionCode: string;
+      paymentReference: string;
+    };
+    cardDetails?: {
+      cardPan: string;
+      cardType: string;
+      cardCurrency: string;
+      cardBank: string;
+    };
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.get<NombaCheckoutTransactionResponse>(
+      "/v1/checkout/transaction",
+      {
+        params: { idType, id },
+        headers: authHeaders,
+      }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba fetchCheckoutTransaction failed [${code}]: ${description}`
+      );
+    }
+
+    logger.info(
+      {
+        id,
+        idType,
+        success: data.success,
+        message: data.message,
+        orderId: data.order.orderId,
+        orderReference: data.order.orderReference,
+        hasCardDetails: !!data.cardDetails,
+        hasTransferDetails: !!data.transferDetails,
+        tokenizedCardPayment: data.transactionDetails?.tokenizedCardPayment,
+      },
+      "Nomba checkout transaction fetched"
+    );
+
+    return {
+      success: data.success,
+      message: data.message,
+      order: data.order,
+      transactionDetails: data.transactionDetails,
+      transferDetails: data.transferDetails,
+      cardDetails: data.cardDetails,
     };
   }
 
@@ -640,6 +1009,139 @@ class NombaService {
     );
 
     return { status: response.data.data?.status || "SUCCESS" };
+  }
+
+  // ============================================================
+  // TOKENIZED CARD MANAGEMENT
+  // Online Checkout: GET /v1/checkout/tokenized-card-data
+  // Charge:         GET /v1/checkout/user-card/{orderReference}
+  // ============================================================
+
+  /**
+   * List all of the merchant's tokenized cards.
+   *
+   * Per Nomba API: GET /v1/checkout/tokenized-card-data
+   * Header: accountId (required — parent account UUID)
+   * Query params:
+   *   - customerEmail: filter by customer email
+   *   - startDate:     ISO date string, start of creation window
+   *   - endDate:       ISO date string, end of creation window
+   *   - page:          0-indexed page number (omit for first page)
+   *
+   * @returns Paginated list of tokenized card records + nextPage cursor
+   */
+  async listTokenizedCards(params?: {
+    customerEmail?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+  }): Promise<{
+    nextPage: string;
+    tokenizedCardDataList: NombaTokenizedCardItem[];
+    total: number;
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    // Build query params — only include keys that were provided
+    const queryParams: Record<string, string | number> = {};
+    if (params?.customerEmail) queryParams.customerEmail = params.customerEmail;
+    if (params?.startDate)     queryParams.startDate = params.startDate;
+    if (params?.endDate)       queryParams.endDate = params.endDate;
+    if (params?.page !== undefined) queryParams.page = params.page;
+
+    const response = await this.client.get<NombaListTokenizedCardsResponse>(
+      "/v1/checkout/tokenized-card-data",
+      {
+        headers: authHeaders,
+        params: queryParams,
+      }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba listTokenizedCards failed: [${code}] ${description}`
+      );
+    }
+
+    const list = data.tokenizedCardDataList ?? [];
+
+    logger.info(
+      {
+        count: list.length,
+        nextPage: data.nextPage,
+        filters: params ?? {},
+      },
+      "Nomba tokenized card list fetched"
+    );
+
+    return {
+      nextPage: data.nextPage ?? "0",
+      tokenizedCardDataList: list,
+      total: list.length,
+    };
+  }
+
+  /**
+   * Get the saved cards for a specific user, gated by an OTP.
+   *
+   * Per Nomba API: GET /v1/checkout/user-card/{orderReference}
+   *
+   * Prerequisites:
+   *  1. Merchant called POST /v1/checkout/user-card/saved-card/auth to trigger OTP
+   *  2. User received OTP on their registered mobile number
+   *  3. Caller passes that OTP here as the `otp` query param
+   *
+   * @param orderReference - The original checkout order reference
+   * @param otp            - One-time code sent to the user's mobile number
+   * @returns Array of tokenized card records for this user
+   */
+  async getUserSavedCards(
+    orderReference: string,
+    otp: string
+  ): Promise<{
+    tokenizedCardData: NombaTokenizedCardItem[];
+    total: number;
+  }> {
+    if (!orderReference || !otp) {
+      throw new Error(
+        "getUserSavedCards: both orderReference and otp are required"
+      );
+    }
+
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.get<NombaGetUserSavedCardsResponse>(
+      `/v1/checkout/user-card/${encodeURIComponent(orderReference)}`,
+      {
+        headers: authHeaders,
+        params: { otp },
+      }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba getUserSavedCards failed: [${code}] ${description}`
+      );
+    }
+
+    const cards = data.tokenizedCardData ?? [];
+
+    logger.info(
+      {
+        orderReference,
+        cardCount: cards.length,
+      },
+      "Nomba user saved cards fetched"
+    );
+
+    return {
+      tokenizedCardData: cards,
+      total: cards.length,
+    };
   }
 
   // ============================================================

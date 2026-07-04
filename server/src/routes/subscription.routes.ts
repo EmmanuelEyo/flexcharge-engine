@@ -8,6 +8,7 @@ import {
   simulateChangePlan,
   pauseSubscription,
   resumeSubscription,
+  chargeNow,
 } from "../controllers/subscription.controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
@@ -40,5 +41,6 @@ router.post("/:id/change-plan", validate(changePlanSchema), changeSubscriptionPl
 router.post("/:id/simulate-change", validate(simulateChangePlanSchema), simulateChangePlan);
 router.post("/:id/pause", pauseSubscription);
 router.post("/:id/resume", resumeSubscription);
+router.post("/:id/charge-now", chargeNow);
 
 export default router;
