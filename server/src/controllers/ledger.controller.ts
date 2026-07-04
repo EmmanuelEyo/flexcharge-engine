@@ -164,6 +164,36 @@ export async function processRefund(req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // Verify payment method and transaction age on Nomba before attempting refund
+    if (invoice.nombaOrderReference) {
+      try {
+        const txInfo = await nombaService.fetchCheckoutTransaction(invoice.nombaOrderReference, "ORDER_REFERENCE");
+        
+        // Check 1: Payment Method (Bank Transfer refunds are not programmatically supported by Nomba API)
+        if (txInfo.transferDetails) {
+          res.status(400).json({
+            error: "Automated refunds are not supported for bank transfers. Please process a manual transfer off-platform."
+          });
+          return;
+        }
+
+        // Check 2: Transaction Age (Transactions older than 24 hours are settled and cannot be programmatically reversed)
+        if (txInfo.transactionDetails?.transactionDate) {
+          const txDate = new Date(txInfo.transactionDetails.transactionDate);
+          const hoursAge = (Date.now() - txDate.getTime()) / (1000 * 60 * 60);
+          if (hoursAge > 24) {
+            res.status(400).json({
+              error: "Automated refunds are not supported for transactions older than 24 hours. Please process a manual transfer off-platform."
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        logger.error({ error, invoiceId }, "Error verifying transaction eligibility on Nomba");
+        // If Nomba API errors on fetching, we proceed to let ledgerService handle the refund call
+      }
+    }
+
     await ledgerService.processRefund(
       tenantId!,
       invoiceId,
