@@ -18,9 +18,9 @@ export default function WalletDrawer({ wallet, onClose, onUpdate }: WalletDrawer
   const [description, setDescription] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
-  const [autoTopUpEnabled, setAutoTopUpEnabled] = useState(wallet.autoTopUp?.enabled || false);
-  const [threshold, setThreshold] = useState((wallet.autoTopUp?.thresholdKobo || 0) / 100);
-  const [topUpAmount, setTopUpAmount] = useState((wallet.autoTopUp?.topUpAmountKobo || 0) / 100);
+  const [autoTopUpEnabled, setAutoTopUpEnabled] = useState(wallet.autoTopUp || false);
+  const [threshold, setThreshold] = useState((wallet.autoTopUpTrigger || 0) / 100);
+  const [topUpAmount, setTopUpAmount] = useState((wallet.autoTopUpAmount || 0) / 100);
   const [settingsLoading, setSettingsLoading] = useState(false);
 
   useEffect(() => {
@@ -67,9 +67,9 @@ export default function WalletDrawer({ wallet, onClose, onUpdate }: WalletDrawer
       setSettingsLoading(true);
       setError("");
       await api.patch(`/wallets/${wallet._id}/auto-top-up`, {
-        enabled: autoTopUpEnabled,
-        thresholdKobo: threshold * 100,
-        topUpAmountKobo: topUpAmount * 100,
+        autoTopUp: autoTopUpEnabled,
+        autoTopUpTrigger: threshold * 100,
+        autoTopUpAmount: topUpAmount * 100,
       });
       onUpdate();
     } catch (err: any) {
