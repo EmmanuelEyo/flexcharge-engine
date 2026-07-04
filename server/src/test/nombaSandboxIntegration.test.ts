@@ -43,7 +43,7 @@ test("Nomba Sandbox Live Integration Probes", async (t) => {
         customerEmail: "test@example.com",
       });
       console.log("Tokenized Charge Result:", result);
-      assert.ok(result.status, "Charge should have a status");
+      assert.ok(result.success !== undefined, "Charge should have a success boolean");
     } catch (error: any) {
       console.error("Tokenized Charge Failed:", error?.response?.status, error?.response?.data);
       throw error;

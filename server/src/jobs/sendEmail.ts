@@ -36,7 +36,7 @@ interface EmailJobPayload {
   /** Who receives the email: the customer or the tenant/developer. */
   recipientType: "customer" | "tenant";
   /** The type of email to send. */
-  type: "welcome" | "receipt" | "dunning" | "cancel" | "new_subscriber" | "payment_failed" | "manual_invoice" | "manual_invoice_reminder";
+  type: "welcome" | "receipt" | "dunning" | "cancel" | "new_subscriber" | "payment_failed" | "manual_invoice" | "manual_invoice_reminder" | "withdrawal_successful" | "withdrawal_failed" | "refund_deducted" | "refund_processed";
   /** Database IDs used to look up the records at dispatch time. */
   tenantId: string;
   customerId?: string;

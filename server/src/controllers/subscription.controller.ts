@@ -26,6 +26,7 @@ import { Wallet } from "../models/Wallet.js";
 import { creditWallet, createWallet } from "../services/wallet.service.js";
 import { queueWebhook } from "../services/webhook.service.js";
 import { queueEmail } from "../utils/emailDispatcher.js";
+import { calculateNextBillingDate } from "../services/billing.service.js";
 
 /**
  * Subscription Controller — Manages the full subscription lifecycle.
@@ -534,18 +535,19 @@ export async function changeSubscriptionPlan(
         throw new AppError("Cannot process upgrade without a valid payment token", 400);
       }
       const customer = await Customer.findById(subscription.customerId);
+      const orderRef = `charge_${Date.now()}`;
       const chargeResult = await nombaService.chargeTokenizedCard({
-        orderReference: `charge_${Date.now()}`,
+        orderReference: orderRef,
         tokenKey: subscription.tokenKey,
         amount: result.amountDue,
-        currency: newPlan.currency,
+        currency: newPlan.currency as "NGN" | "CDF" | "USD" | undefined,
         customerEmail: customer!.email,
       });
 
-      if (!chargeResult.status) {
+      if (!chargeResult.success) {
         throw new AppError(`Upgrade payment failed: ${chargeResult.message}`, 402);
       }
-      nombaOrderRef = chargeResult.transactionId;
+      nombaOrderRef = orderRef;
     }
 
     // Process invoice if there's an amount due
@@ -641,6 +643,237 @@ export async function resumeSubscription(
 
     logger.info({ subscriptionId: subscription._id }, "Subscription resumed");
     sendSuccess(res, subscription);
+  } catch (error) {
+    next(error);
+  }
+}
+/**
+ * POST /subscriptions/:id/charge-now
+ * Immediately trigger a tokenized card charge for a subscription.
+ *
+ * This endpoint wraps Nomba's POST /v1/checkout/tokenized-card-payment
+ * and is the FlexCharge-native way for tenants to:
+ *  1. Manually retry a failed charge for a past_due subscription
+ *  2. Trigger an early renewal without waiting for the billing cron
+ *  3. Build their own "Pay now" button in their frontend
+ *
+ * Requirements:
+ *  - Subscription must be active or past_due
+ *  - Subscription must have a tokenKey stored (card must be on file)
+ *
+ * Flow:
+ * 1. Validate subscription ownership and tokenKey presence
+ * 2. Create a pending Invoice for audit trail (idempotency-keyed)
+ * 3. Call Nomba chargeTokenizedCard via nombaService
+ * 4. On success: mark invoice paid, reset dunning, advance billing dates
+ * 5. On failure: mark invoice failed, increment dunning
+ * 6. Fire appropriate webhooks and return result
+ *
+ * Per Nomba API: POST /v1/checkout/tokenized-card-payment
+ */
+export async function chargeNow(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const subscriptionId = req.params["id"] as string;
+    const tenantId = req.tenantId!;
+
+    // === STEP 1: Load and validate subscription ===
+    const subscription = await Subscription.findOne({
+      _id: subscriptionId,
+      ...tenantFilter(req),
+    })
+      .populate("planId")
+      .populate("customerId");
+
+    if (!subscription) {
+      throw new NotFoundError("Subscription");
+    }
+
+    const plan = subscription.planId as any;
+    const customer = subscription.customerId as any;
+
+    if (!plan || !customer) {
+      throw new AppError("Subscription plan or customer data is missing", 422);
+    }
+
+    // Only allow charging active or past_due subscriptions
+    if (!["active", "past_due"].includes(subscription.status)) {
+      throw new AppError(
+        `Cannot charge a subscription with status '${subscription.status}'. Only 'active' or 'past_due' subscriptions can be charged.`,
+        422
+      );
+    }
+
+    // Must have a tokenized card on file
+    if (!subscription.tokenKey) {
+      throw new AppError(
+        "No tokenized card on file for this subscription. The customer must complete a checkout with tokenizeCard enabled first.",
+        422
+      );
+    }
+
+    // === STEP 2: Create a pending invoice (idempotency-keyed) ===
+    const now = new Date();
+    const periodEndStr = subscription.currentPeriodEnd
+      ? subscription.currentPeriodEnd.toISOString().split("T")[0]
+      : now.toISOString().split("T")[0];
+    const idempotencyKey = `chargenow_${subscription._id}_${periodEndStr}`;
+
+    // Check for existing charge this period to prevent duplicate charges
+    const existingInvoice = await Invoice.findOne({ idempotencyKey });
+    if (existingInvoice && existingInvoice.status === "paid") {
+      sendSuccess(res, {
+        charged: false,
+        message: "Subscription is already paid for this billing period.",
+        invoice: existingInvoice,
+      });
+      return;
+    }
+
+    const orderReference = `chargenow_${subscription._id}_${Date.now()}`;
+    const invoice = await Invoice.create({
+      tenantId,
+      subscriptionId: subscription._id,
+      customerId: customer._id,
+      amount: plan.amount,
+      currency: plan.currency || "NGN",
+      status: "pending",
+      nombaOrderReference: orderReference,
+      description: `${plan.name} — Manual Charge`,
+      isRenewal: true,
+      idempotencyKey,
+    });
+
+    // === STEP 3: Charge the tokenized card via Nomba ===
+    let chargeResult: { success: boolean; message: string };
+
+    try {
+      chargeResult = await nombaService.chargeTokenizedCard({
+        tokenKey: subscription.tokenKey,
+        orderReference,
+        amount: plan.amount,
+        currency: plan.currency || "NGN",
+        customerEmail: customer.email,
+        customerId: customer._id.toString(),
+        callbackUrl: `${env.FRONTEND_URL}/billing/complete?ref=${orderReference}`,
+        orderMetaData: {
+          trigger: "manual_charge_now",
+          subscriptionId: subscription._id.toString(),
+          tenantId: tenantId.toString(),
+        },
+      });
+    } catch (nombaError) {
+      const errMsg =
+        nombaError instanceof Error ? nombaError.message : "Nomba API error";
+
+      invoice.status = "failed";
+      invoice.failureReason = errMsg;
+      await invoice.save();
+
+      logger.error(
+        { subscriptionId: subscription._id, invoiceId: invoice._id, error: errMsg },
+        "chargeNow: Nomba API call failed"
+      );
+
+      throw new AppError(`Payment gateway error: ${errMsg}`, 502);
+    }
+
+    // === STEP 4: Handle result ===
+    if (chargeResult.success) {
+      // --- SUCCESS ---
+      invoice.status = "paid";
+      invoice.paidAt = new Date();
+      invoice.nombaTransactionId = orderReference;
+      await invoice.save();
+
+      // Advance billing dates
+      const newPeriodStart = subscription.currentPeriodEnd || now;
+      const newPeriodEnd = calculateNextBillingDate(newPeriodStart, plan.interval);
+
+      (subscription as any)._previousStatus = subscription.status;
+      subscription.status = "active";
+      subscription.currentPeriodStart = newPeriodStart;
+      subscription.currentPeriodEnd = newPeriodEnd;
+      subscription.nextBillingDate = newPeriodEnd;
+      subscription.dunningAttemptCount = 0;
+      subscription.lastDunningAt = undefined;
+      await subscription.save();
+
+      await queueWebhook(tenantId, "subscription.renewed", {
+        subscriptionId: subscription._id,
+        customerId: customer._id,
+        planId: plan._id,
+        amount: plan.amount,
+        currency: plan.currency,
+        currentPeriodStart: newPeriodStart.toISOString(),
+        currentPeriodEnd: newPeriodEnd.toISOString(),
+        invoiceId: invoice._id,
+        trigger: "manual_charge_now",
+      });
+
+      await queueEmail("customer", "receipt", {
+        tenantId,
+        customerId: customer._id,
+        subscriptionId: subscription._id,
+        invoiceId: invoice._id,
+      });
+
+      logger.info(
+        {
+          subscriptionId: subscription._id,
+          invoiceId: invoice._id,
+          nextBilling: newPeriodEnd.toISOString(),
+        },
+        "chargeNow: Subscription charged and renewed successfully"
+      );
+
+      sendSuccess(res, {
+        charged: true,
+        message: chargeResult.message || "Charge successful",
+        invoice,
+        nextBillingDate: newPeriodEnd.toISOString(),
+      });
+    } else {
+      // --- FAILURE ---
+      invoice.status = "failed";
+      invoice.failureReason = chargeResult.message || "Card charge declined";
+      await invoice.save();
+
+      subscription.dunningAttemptCount = (subscription.dunningAttemptCount || 0) + 1;
+      subscription.lastDunningAt = new Date();
+      if (subscription.status === "active") {
+        (subscription as any)._previousStatus = subscription.status;
+        subscription.status = "past_due";
+      }
+      await subscription.save();
+
+      await queueWebhook(tenantId, "subscription.payment_failed", {
+        subscriptionId: subscription._id,
+        invoiceId: invoice._id,
+        amount: plan.amount,
+        currency: plan.currency,
+        failureReason: chargeResult.message,
+        trigger: "manual_charge_now",
+      });
+
+      logger.warn(
+        {
+          subscriptionId: subscription._id,
+          invoiceId: invoice._id,
+          message: chargeResult.message,
+        },
+        "chargeNow: Tokenized card charge declined"
+      );
+
+      sendSuccess(res, {
+        charged: false,
+        message: chargeResult.message || "Card charge declined",
+        invoice,
+      });
+    }
   } catch (error) {
     next(error);
   }

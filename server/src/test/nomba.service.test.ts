@@ -69,9 +69,11 @@ test("Nomba Service Payload Construction", async (t) => {
         requests.push({ path, body, headers: options.headers });
         return {
           data: {
+            code: "00",
+            description: "Success",
             data: {
-              status: "SUCCESS",
-              transactionId: "txn_123",
+              status: true,
+              message: "success",
             },
           },
         };
@@ -96,8 +98,8 @@ test("Nomba Service Payload Construction", async (t) => {
       assert.strictEqual(requests[0]!.body.order.amount, "2500.00");
       assert.strictEqual(requests[0]!.body.order.customerId, "cust_123");
       assert.strictEqual(requests[0]!.body.order.accountId, env.NOMBA_SUB_ACCOUNT_ID);
-      assert.strictEqual(result.status, "SUCCESS");
-      assert.strictEqual(result.transactionId, "txn_123");
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.message, "success");
     } finally {
       restoreNombaServiceMocks();
     }

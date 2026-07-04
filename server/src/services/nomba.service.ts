@@ -72,14 +72,24 @@ interface NombaCheckoutOrderDetailsResponse {
   };
 }
 
+/**
+ * Response shape for POST /v1/checkout/tokenized-card-payment
+ * Matches the Nomba API spec exactly.
+ *
+ * The docs show:
+ *   { "code": "00", "description": "Success", "data": { "status": true, "message": "success" } }
+ *
+ * NOTE: status is a BOOLEAN (or boolean string "true"/"false") per docs —
+ * NOT "SUCCESS"/"APPROVED". The outer `code` field is the primary success indicator.
+ */
 interface NombaTokenizedChargeResponse {
   code: string;
   description: string;
   data: {
-    status: string;
-    transactionId?: string;
+    // Nomba returns this as boolean true/false per their docs
+    // In practice may arrive as string "true"/"false" — we normalise it below
+    status: boolean | string;
     message?: string;
-    code?: string; // Decline code for failed charges
   };
 }
 
@@ -196,12 +206,33 @@ export interface CreateCheckoutParams {
 }
 
 export interface ChargeTokenizedCardParams {
+  /** The token key returned by Nomba's tokenization webhook */
   tokenKey: string;
+  /** Merchant-supplied order reference (idempotency key for this charge) */
   orderReference: string;
-  amount: number;         // In KOBO — we convert to NGN string for Nomba
-  currency?: string;
+  /** Charge amount in KOBO — converted to Naira decimal string before sending to Nomba */
+  amount: number;
+  /** ISO 4217 currency. Use NGN for Nigeria, CDF/USD for DRC. Defaults to NGN. */
+  currency?: "NGN" | "CDF" | "USD";
+  /** Customer email — required by Nomba within the order object */
   customerEmail: string;
+  /** Optional: customer identifier for Nomba's records */
   customerId?: string;
+  /**
+   * Required by Nomba per docs when sending the order object.
+   * For server-side recurring charges, defaults to the frontend success page.
+   * Nomba uses this URL to redirect the customer after payment (not applicable
+   * for server-side tokenized charges, but the field is required in the API).
+   */
+  callbackUrl?: string;
+  /** Optional: sub-account where funds will be deposited. Defaults to NOMBA_SUB_ACCOUNT_ID. */
+  accountId?: string;
+  /** Optional: restrict which payment methods appear on the checkout page */
+  allowedPaymentMethods?: NombaPaymentMethod[];
+  /** Optional: split the inflow across multiple accounts */
+  splitRequest?: NombaSplitRequest;
+  /** Optional: arbitrary key-value metadata attached to the order */
+  orderMetaData?: Record<string, string>;
 }
 
 // ============================================================
@@ -590,46 +621,86 @@ class NombaService {
   async chargeTokenizedCard(
     params: ChargeTokenizedCardParams
   ): Promise<{
-    status: string;
-    transactionId?: string;
-    declineCode?: string;
-    message?: string;
+    /**
+     * True when Nomba's outer `code === "00"` AND `data.status` is truthy.
+     * This is the canonical success indicator to check in the billing engine.
+     * DO NOT check for string values like "SUCCESS" or "APPROVED" — Nomba
+     * returns a boolean (or boolean string) for this endpoint.
+     */
+    success: boolean;
+    message: string;
   }> {
     const authHeaders = await this.getAuthHeaders();
 
-    // Convert KOBO to NGN decimal string
+    // Convert KOBO (integer) to Naira decimal string for Nomba
+    // e.g., 500000 kobo → "5000.00"
     const amountInNaira = (params.amount / 100).toFixed(2);
+
+    // Build the order object — callbackUrl is required by Nomba when sending order.
+    // For server-side recurring charges there is no customer redirect, so we
+    // fall back to the frontend URL as a safe no-op callback.
+    const orderPayload: Record<string, unknown> = {
+      orderReference: params.orderReference,
+      amount: amountInNaira,
+      currency: params.currency ?? "NGN",
+      customerEmail: params.customerEmail,
+      customerId: params.customerId ?? params.orderReference,
+      accountId: params.accountId ?? env.NOMBA_SUB_ACCOUNT_ID,
+      // Required per Nomba docs when the order object is present
+      callbackUrl: params.callbackUrl ?? `${env.FRONTEND_URL}/billing/complete`,
+    };
+
+    // Conditionally include optional fields — omit when absent to keep payload lean
+    if (params.allowedPaymentMethods && params.allowedPaymentMethods.length > 0) {
+      orderPayload.allowedPaymentMethods = params.allowedPaymentMethods;
+    }
+    if (params.splitRequest) {
+      orderPayload.splitRequest = params.splitRequest;
+    }
+    if (params.orderMetaData && Object.keys(params.orderMetaData).length > 0) {
+      orderPayload.orderMetaData = params.orderMetaData;
+    }
 
     const response = await this.client.post<NombaTokenizedChargeResponse>(
       "/v1/checkout/tokenized-card-payment",
       {
         tokenKey: params.tokenKey,
-        order: {
-          orderReference: params.orderReference,
-          amount: amountInNaira,
-          currency: params.currency || "NGN",
-          customerEmail: params.customerEmail,
-          customerId: params.customerId || params.orderReference,
-          accountId: env.NOMBA_SUB_ACCOUNT_ID,
-        },
+        order: orderPayload,
       },
       { headers: authHeaders }
     );
 
+    const { code, description, data } = response.data;
+
+    // Primary success gate: Nomba outer response code must be "00"
+    const outerSuccess = code === "00";
+
+    // Normalise data.status — Nomba docs show boolean but field may arrive as
+    // string "true"/"false" depending on SDK version. Handle both defensively.
+    const statusRaw = data.status;
+    const innerSuccess =
+      statusRaw === true ||
+      statusRaw === "true" ||
+      (typeof statusRaw === "string" && statusRaw.toLowerCase() === "true");
+
+    const success = outerSuccess && innerSuccess;
+    const message = data.message ?? description ?? (success ? "success" : "failed");
+
     logger.info(
       {
         orderReference: params.orderReference,
-        status: response.data.data.status,
+        tokenKey: params.tokenKey,
+        outerCode: code,
+        innerStatus: statusRaw,
+        success,
+        message,
+        amountNaira: amountInNaira,
+        currency: params.currency ?? "NGN",
       },
       "Nomba tokenized card charge completed"
     );
 
-    return {
-      status: response.data.data.status,
-      transactionId: response.data.data.transactionId,
-      declineCode: response.data.data.code,
-      message: response.data.data.message,
-    };
+    return { success, message };
   }
 
   // ============================================================

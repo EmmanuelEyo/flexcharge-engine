@@ -209,16 +209,16 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
       currency: plan.currency || "NGN",
       customerEmail: customer.email,
       customerId: customer._id.toString(),
+      // Server-side recurring charge — callbackUrl is required by Nomba but
+      // has no functional effect for tokenized server-side charges.
+      callbackUrl: `${env.FRONTEND_URL}/billing/complete?ref=${orderReference}`,
     });
 
-    if (
-      chargeResult.status === "SUCCESS" ||
-      chargeResult.status === "APPROVED"
-    ) {
+    if (chargeResult.success) {
       // === PAYMENT SUCCESS ===
       invoice.status = "paid";
       invoice.paidAt = new Date();
-      invoice.nombaTransactionId = chargeResult.transactionId;
+      invoice.nombaTransactionId = orderReference; // Use orderReference as our internal ref
       await invoice.save();
 
       // Advance billing dates
@@ -271,8 +271,8 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
       return await handleChargeFailed(
         subscription,
         invoice,
-        chargeResult.declineCode,
-        chargeResult.message || "Payment declined"
+        undefined,
+        chargeResult.message || "Tokenized card charge declined"
       );
     }
   } catch (error) {
