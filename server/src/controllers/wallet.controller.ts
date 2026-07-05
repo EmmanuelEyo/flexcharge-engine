@@ -202,7 +202,7 @@ export async function updateAutoTopUp(
     const wallet = await Wallet.findOneAndUpdate(
       { ...tenantFilter(req), _id: req.params.id },
       { $set: updateData },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!wallet) {

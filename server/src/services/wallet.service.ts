@@ -72,7 +72,7 @@ export async function creditWallet(
     const wallet = await Wallet.findOneAndUpdate(
       { _id: walletId },
       { $inc: { balance: amount } },
-      { new: true, session }
+      { returnDocument: "after", session }
     );
 
     if (!wallet) {
@@ -172,7 +172,7 @@ export async function debitWallet(
     const wallet = await Wallet.findOneAndUpdate(
       { _id: walletId },
       { $inc: { balance: -amount } },
-      { new: true, session }
+      { returnDocument: "after", session }
     );
 
     if (!wallet) {

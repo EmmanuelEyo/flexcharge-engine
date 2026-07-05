@@ -8,7 +8,7 @@ import { defineTokenRefreshJob, TOKEN_REFRESH_JOB_NAME } from "../jobs/tokenRefr
 import { defineDailyBillingScanJob, DAILY_BILLING_SCAN_JOB_NAME } from "../jobs/dailyBillingScan.js";
 import { defineDunningRetryJob, DUNNING_RETRY_JOB_NAME } from "../jobs/dunningRetry.js";
 import { defineWalletAutoTopupJob, WALLET_AUTO_TOPUP_JOB_NAME } from "../jobs/walletAutoTopup.js";
-import { defineSendEmailJob } from "../jobs/sendEmail.js";
+
 import { defineDailyAnalyticsJob, DAILY_ANALYTICS_JOB_NAME } from "../jobs/recordDailyAnalytics.js";
 import { defineCleanupPendingSubscriptionsJob, CLEANUP_PENDING_SUBS_JOB_NAME } from "../jobs/cleanupPendingSubscriptions.js";
 
@@ -47,7 +47,7 @@ export function getAgenda(): Agenda {
     defineDailyBillingScanJob(agenda);
     defineDunningRetryJob(agenda);
     defineWalletAutoTopupJob(agenda);
-    defineSendEmailJob(agenda);
+
     defineDailyAnalyticsJob(agenda);
     defineCleanupPendingSubscriptionsJob(agenda);
 
@@ -86,6 +86,22 @@ export async function startAgenda(): Promise<void> {
   const agendaInstance = getAgenda();
 
   await agendaInstance.start();
+
+  // Clear stuck locks from previous crashed processes
+  try {
+    if (mongoose.connection.db) {
+      const collection = mongoose.connection.db.collection("agendaJobs");
+      const result = await collection.updateMany(
+        { lockedAt: { $ne: null } },
+        { $set: { lockedAt: null } }
+      );
+      if (result.modifiedCount > 0) {
+        logger.info({ unlockedCount: result.modifiedCount }, "Cleared stuck Agenda locks");
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "Failed to clear Agenda locks");
+  }
 
   // Schedule recurring jobs
   await agendaInstance.every("1 minute", "retry-pending-webhooks");

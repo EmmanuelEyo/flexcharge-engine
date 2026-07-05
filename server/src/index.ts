@@ -2,6 +2,7 @@
 import { env } from "./config/environment.js";
 import { connectDatabase } from "./config/database.js";
 import { startAgenda, stopAgenda } from "./config/agenda.js";
+import { startEmailWorker, stopEmailWorker } from "./workers/emailWorker.js";
 import { logger } from "./utils/logger.js";
 import app from "./app.js";
 
@@ -25,8 +26,9 @@ async function main(): Promise<void> {
     // Step 1: Connect to MongoDB
     await connectDatabase();
 
-    // Step 2: Start the job scheduler
+    // Step 2: Start background workers
     await startAgenda();
+    startEmailWorker();
 
     // Step 3: Start the HTTP server
     const server = app.listen(env.PORT, () => {
@@ -48,8 +50,9 @@ async function main(): Promise<void> {
       server.close(async () => {
         logger.info("HTTP server closed");
 
-        // Stop job scheduler
+        // Stop background workers
         await stopAgenda();
+        stopEmailWorker();
 
         // Exit cleanly
         process.exit(0);

@@ -1,4 +1,4 @@
-import { Agenda, Job } from "agenda";
+
 import { Types } from "mongoose";
 import { Tenant } from "../models/Tenant.js";
 import { Customer } from "../models/Customer.js";
@@ -33,7 +33,7 @@ export const SEND_EMAIL_JOB_NAME = "send-email";
 /**
  * Email Job Payload — every email dispatch gets one of these.
  */
-interface EmailJobPayload {
+export interface EmailJobPayload {
   /** Who receives the email: the customer or the tenant/developer. */
   recipientType: "customer" | "tenant";
   /** The type of email to send. */
@@ -73,11 +73,9 @@ function formatDate(date: Date): string {
 }
 
 /**
- * Define the send-email Agenda job.
+ * Process the email payload natively.
  */
-export function defineSendEmailJob(agenda: Agenda): void {
-  agenda.define<EmailJobPayload>(SEND_EMAIL_JOB_NAME, async (job: Job<EmailJobPayload>) => {
-    const data = job.attrs.data!;
+export async function processEmailPayload(data: EmailJobPayload): Promise<void> {
 
     if (!isEmailConfigured()) {
       logger.warn({ type: data.type, recipientType: data.recipientType }, "Email skipped — not configured");
@@ -301,7 +299,7 @@ export function defineSendEmailJob(agenda: Agenda): void {
 
       logger.info(
         { recipientType: data.recipientType, type: data.type, to: recipientEmail },
-        "Email dispatched via Agenda job"
+        "Email dispatched via outbox worker"
       );
     } catch (err) {
       logger.error(
@@ -312,7 +310,6 @@ export function defineSendEmailJob(agenda: Agenda): void {
         },
         "Email job failed"
       );
-      throw err; // Let Agenda retry the job
+      throw err; // Let the outbox worker retry the job
     }
-  });
 }

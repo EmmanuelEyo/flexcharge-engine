@@ -1,11 +1,10 @@
-import { getAgenda } from "../config/agenda.js";
-import { SEND_EMAIL_JOB_NAME } from "../jobs/sendEmail.js";
 import { isEmailConfigured } from "../services/email.service.js";
 import { logger } from "../utils/logger.js";
 import { Types } from "mongoose";
+import { EmailOutbox } from "../models/EmailOutbox.js";
 
 /**
- * Email Dispatcher — convenience wrapper around Agenda to queue email jobs.
+ * Email Dispatcher — convenience wrapper around EmailOutbox to queue email jobs natively.
  *
  * Usage:
  *   await queueEmail("customer", "welcome", { tenantId, customerId, subscriptionId });
@@ -48,29 +47,29 @@ export async function queueEmail(
   }
 
   try {
-    const agenda = getAgenda();
-    await agenda.now(SEND_EMAIL_JOB_NAME, {
+    await EmailOutbox.create({
       recipientType,
       type,
-      tenantId: context.tenantId.toString(),
-      customerId: context.customerId?.toString(),
-      subscriptionId: context.subscriptionId?.toString(),
-      invoiceId: context.invoiceId?.toString(),
+      tenantId: context.tenantId,
+      customerId: context.customerId,
+      subscriptionId: context.subscriptionId,
+      invoiceId: context.invoiceId,
       failureReason: context.failureReason,
       attemptNumber: context.attemptNumber,
       cancellationReason: context.cancellationReason,
       portalUrl: context.portalUrl,
+      status: "pending",
     });
 
     logger.info(
       { recipientType, type },
-      "Email job queued"
+      "Email job queued in outbox"
     );
   } catch (err) {
     // Never let email failures crash the main flow
     logger.error(
       { recipientType, type, err: err instanceof Error ? err.message : "Unknown" },
-      "Failed to queue email job"
+      "Failed to queue email job in outbox"
     );
   }
 }
