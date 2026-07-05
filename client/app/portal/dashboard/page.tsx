@@ -34,10 +34,12 @@ interface Wallet {
   autoTopUp: boolean;
   autoTopUpAmount: number;
   autoTopUpTrigger: number;
-  minAutoTopUpAmount?: number;
-  maxAutoTopUpAmount?: number;
-  minAutoTopUpTrigger?: number;
-  maxAutoTopUpTrigger?: number;
+  walletGroupId?: {
+    minAutoTopUpAmount?: number;
+    maxAutoTopUpAmount?: number;
+    minAutoTopUpTrigger?: number;
+    maxAutoTopUpTrigger?: number;
+  };
 }
 
 function PortalDashboardContent() {
@@ -472,14 +474,14 @@ function PortalDashboardContent() {
                             name="autoTopUpAmount"
                             id="autoTopUpAmount"
                             defaultValue={wallet.autoTopUpAmount / 100 || 5000}
-                            min={wallet.minAutoTopUpAmount ? wallet.minAutoTopUpAmount / 100 : 1000}
-                            max={wallet.maxAutoTopUpAmount ? wallet.maxAutoTopUpAmount / 100 : undefined}
+                            min={wallet.walletGroupId?.minAutoTopUpAmount ? wallet.walletGroupId.minAutoTopUpAmount / 100 : 1000}
+                            max={wallet.walletGroupId?.maxAutoTopUpAmount ? wallet.walletGroupId.maxAutoTopUpAmount / 100 : undefined}
                             required
                             className="block w-full pl-8 pr-3 py-2.5 bg-white/70 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 backdrop-blur-md transition-all shadow-sm"
                           />
                         </div>
-                        {wallet.minAutoTopUpAmount && (
-                          <p className="text-[11px] text-slate-500">Min: ₦{wallet.minAutoTopUpAmount / 100}</p>
+                        {wallet.walletGroupId?.minAutoTopUpAmount && (
+                          <p className="text-[11px] text-slate-500">Min: ₦{wallet.walletGroupId.minAutoTopUpAmount / 100}</p>
                         )}
                       </div>
                       <div className="space-y-1.5">
@@ -491,14 +493,14 @@ function PortalDashboardContent() {
                             name="autoTopUpTrigger"
                             id="autoTopUpTrigger"
                             defaultValue={wallet.autoTopUpTrigger / 100 || 1000}
-                            min={wallet.minAutoTopUpTrigger ? wallet.minAutoTopUpTrigger / 100 : 0}
-                            max={wallet.maxAutoTopUpTrigger ? wallet.maxAutoTopUpTrigger / 100 : undefined}
+                            min={wallet.walletGroupId?.minAutoTopUpTrigger ? wallet.walletGroupId.minAutoTopUpTrigger / 100 : 100}
+                            max={wallet.walletGroupId?.maxAutoTopUpTrigger ? wallet.walletGroupId.maxAutoTopUpTrigger / 100 : undefined}
                             required
                             className="block w-full pl-8 pr-3 py-2.5 bg-white/70 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 backdrop-blur-md transition-all shadow-sm"
                           />
                         </div>
-                        {wallet.minAutoTopUpTrigger && (
-                          <p className="text-[11px] text-slate-500">Min: ₦{wallet.minAutoTopUpTrigger / 100}</p>
+                        {wallet.walletGroupId?.minAutoTopUpTrigger && (
+                          <p className="text-[11px] text-slate-500">Min: ₦{wallet.walletGroupId.minAutoTopUpTrigger / 100}</p>
                         )}
                       </div>
                     </div>

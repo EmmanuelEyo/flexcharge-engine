@@ -15,7 +15,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Plans", href: "/dashboard/plans", icon: "payments" },
   { label: "Subscribers", href: "/dashboard/subscribers", icon: "group" },
   { label: "Ledger", href: "/dashboard/ledger", icon: "account_balance" },
-  { label: "Wallets", href: "/dashboard/wallets", icon: "account_balance_wallet" },
+  { label: "Wallet Groups", href: "/dashboard/wallet-groups", icon: "account_balance_wallet" },
   { label: "Invoices", href: "/dashboard/invoices", icon: "receipt_long" },
   { label: "Developers", href: "/dashboard/developers", icon: "code" },
 ];
