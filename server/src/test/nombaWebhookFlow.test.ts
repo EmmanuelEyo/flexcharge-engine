@@ -152,7 +152,7 @@ test("Nomba Webhook Flow", async (t) => {
 
     const updatedSubscription = await Subscription.findById(subscription._id);
     const updatedInvoice = await Invoice.findById(invoice._id);
-    const deliveriesAfterFirst = await WebhookDelivery.countDocuments();
+    let deliveriesAfterFirst = await WebhookDelivery.countDocuments();
 
     assert.ok(updatedSubscription);
     assert.strictEqual(updatedSubscription?.status, "active");
@@ -166,6 +166,11 @@ test("Nomba Webhook Flow", async (t) => {
     assert.ok(updatedInvoice);
     assert.strictEqual(updatedInvoice?.status, "paid");
     assert.strictEqual(updatedInvoice?.nombaTransactionId, "txn_webhook_123");
+
+    await waitFor(async () => {
+      deliveriesAfterFirst = await WebhookDelivery.countDocuments();
+      return deliveriesAfterFirst === 1;
+    });
     assert.strictEqual(deliveriesAfterFirst, 1);
 
     await request(app)

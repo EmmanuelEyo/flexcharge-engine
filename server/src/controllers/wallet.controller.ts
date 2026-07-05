@@ -191,10 +191,17 @@ export async function updateAutoTopUp(
 ): Promise<void> {
   try {
     const input = req.body as UpdateAutoTopUpInput;
+    
+    // Explicitly restrict to only min/max bounds
+    const updateData: Record<string, number> = {};
+    if (input.minAutoTopUpAmount !== undefined) updateData.minAutoTopUpAmount = input.minAutoTopUpAmount;
+    if (input.maxAutoTopUpAmount !== undefined) updateData.maxAutoTopUpAmount = input.maxAutoTopUpAmount;
+    if (input.minAutoTopUpTrigger !== undefined) updateData.minAutoTopUpTrigger = input.minAutoTopUpTrigger;
+    if (input.maxAutoTopUpTrigger !== undefined) updateData.maxAutoTopUpTrigger = input.maxAutoTopUpTrigger;
 
     const wallet = await Wallet.findOneAndUpdate(
       { ...tenantFilter(req), _id: req.params.id },
-      { $set: input },
+      { $set: updateData },
       { new: true, runValidators: true }
     );
 

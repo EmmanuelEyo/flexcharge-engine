@@ -9,6 +9,7 @@ import { calculateNextBillingDate } from "./billing.service.js";
 import { env } from "../config/environment.js";
 import { classifyDeclineCode } from "../config/declineCodeMap.js";
 import { queueEmail } from "../utils/emailDispatcher.js";
+import { ledgerService } from "./ledger.service.js";
 import type { PlanInterval } from "../types/subscription.types.js";
 
 /**
@@ -255,6 +256,13 @@ export async function processDunningRetry(
       invoice.nombaTransactionId = orderReference;
       await invoice.save();
 
+      // Credit tenant ledger
+      await ledgerService.creditTenant(
+        subscription.tenantId,
+        plan.amount,
+        invoice._id.toString()
+      );
+
       // Reset subscription to active
       (subscription as any)._previousStatus = subscription.status;
       subscription.status = "active";
@@ -293,7 +301,7 @@ export async function processDunningRetry(
     } else {
       // === DUNNING FAILED ===
       // Nomba tokenized card endpoint doesn't return a granular decline code
-      const declineCode: string | undefined = undefined;
+      const declineCode: string | undefined = (chargeResult as any).declineCode;
       const classification = declineCode
         ? classifyDeclineCode(declineCode)
         : null;

@@ -16,6 +16,7 @@ import { CancelEmail } from "../emails/customer/CancelEmail.js";
 import { ManualInvoiceEmail } from "../emails/customer/ManualInvoiceEmail.js";
 import { ManualInvoiceReminderEmail } from "../emails/customer/ManualInvoiceReminderEmail.js";
 import { RefundProcessedEmail } from "../emails/customer/RefundProcessedEmail.js";
+import { PortalLinkEmail } from "../emails/customer/PortalLinkEmail.js";
 
 // Tenant templates
 import { TenantNewSubscriberEmail } from "../emails/tenant/TenantNewSubscriberEmail.js";
@@ -135,6 +136,19 @@ export function defineSendEmailJob(agenda: Agenda): void {
               interval: plan?.interval || "month",
               tenantName: tenant.name,
               hasPaymentToken: !!subscription?.tokenKey,
+            });
+            break;
+
+          case "portal_link":
+            if (!data.portalUrl) {
+              logger.warn(data, "Email job: portal_link requires portalUrl — skipping");
+              return;
+            }
+            subject = `Your Customer Portal Access Link for ${tenant.name}`;
+            element = React.createElement(PortalLinkEmail, {
+              customerName: customer?.name || "there",
+              tenantName: tenant.name,
+              portalUrl: data.portalUrl,
             });
             break;
 

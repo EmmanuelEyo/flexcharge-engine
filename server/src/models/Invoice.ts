@@ -51,7 +51,7 @@ const invoiceSchema = new Schema<IInvoice>(
     subscriptionId: {
       type: Schema.Types.ObjectId,
       ref: "Subscription",
-      required: true,
+      required: false,
       index: true,
     },
     customerId: {

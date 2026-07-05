@@ -43,29 +43,27 @@ export const debitWalletSchema = z.object({
 });
 
 export const updateAutoTopUpSchema = z.object({
-  autoTopUp: z.boolean(),
-  autoTopUpAmount: z
+  minAutoTopUpAmount: z
     .number()
     .int("Amount must be an integer (kobo)")
     .nonnegative("Amount cannot be negative")
     .optional(),
-  autoTopUpTrigger: z
+  maxAutoTopUpAmount: z
+    .number()
+    .int("Amount must be an integer (kobo)")
+    .nonnegative("Amount cannot be negative")
+    .optional(),
+  minAutoTopUpTrigger: z
     .number()
     .int("Trigger must be an integer (kobo)")
     .nonnegative("Trigger cannot be negative")
     .optional(),
-}).refine(
-  (data) => {
-    if (data.autoTopUp) {
-      return data.autoTopUpAmount !== undefined && data.autoTopUpTrigger !== undefined;
-    }
-    return true;
-  },
-  {
-    message: "autoTopUpAmount and autoTopUpTrigger are required when autoTopUp is true",
-    path: ["autoTopUp"],
-  }
-);
+  maxAutoTopUpTrigger: z
+    .number()
+    .int("Trigger must be an integer (kobo)")
+    .nonnegative("Trigger cannot be negative")
+    .optional(),
+});
 
 export type CreateWalletInput = z.infer<typeof createWalletSchema>;
 export type TopUpWalletInput = z.infer<typeof topUpWalletSchema>;

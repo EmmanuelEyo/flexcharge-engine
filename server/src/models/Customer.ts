@@ -14,6 +14,9 @@ export interface ICustomer extends Document {
   email: string;
   name?: string;
   phone?: string;
+  tokenKey?: string;
+  cardLast4?: string;
+  cardBrand?: string;
   metadata?: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
@@ -43,6 +46,9 @@ const customerSchema = new Schema<ICustomer>(
       trim: true,
       maxlength: [20, "Phone number cannot exceed 20 characters"],
     },
+    tokenKey: { type: String, trim: true },
+    cardLast4: { type: String, trim: true },
+    cardBrand: { type: String, trim: true },
     metadata: {
       type: Schema.Types.Mixed,
       default: {},

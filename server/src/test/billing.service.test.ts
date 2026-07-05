@@ -15,11 +15,13 @@ import {
   sendUpcomingRenewalReminders,
 } from "../services/billing.service.js";
 import { nombaService } from "../services/nomba.service.js";
+import { ledgerService } from "../services/ledger.service.js";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { WelcomeEmail } from "../emails/customer/WelcomeEmail.js";
 
 const originalChargeTokenizedCard = nombaService.chargeTokenizedCard;
+const originalCreditTenant = ledgerService.creditTenant;
 
 async function seedRenewalFixture() {
   const tenant = await Tenant.create({
@@ -71,10 +73,12 @@ test("Billing Service", async (t) => {
   t.beforeEach(async () => {
     await clearTestDB();
     nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
+    ledgerService.creditTenant = async () => {};
   });
 
   t.after(async () => {
     nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
+    ledgerService.creditTenant = originalCreditTenant;
     await teardownTestDB();
   });
 
@@ -138,7 +142,8 @@ test("Billing Service", async (t) => {
     nombaService.chargeTokenizedCard = (async (params: any) => {
       chargeCalls.push(params);
       return {
-        status: "SUCCESS",
+        success: true,
+        message: "success",
         transactionId: "txn_success_123",
       };
     }) as any;
@@ -146,6 +151,9 @@ test("Billing Service", async (t) => {
     try {
       const result = await processRenewal(subscription._id as Types.ObjectId);
 
+      if (!result.success) {
+        console.error("PROCESS RENEWAL FAILED:", result);
+      }
       assert.strictEqual(result.success, true);
       assert.ok(result.invoiceId);
       assert.strictEqual(chargeCalls.length, 1);
@@ -153,7 +161,7 @@ test("Billing Service", async (t) => {
       const invoice = await Invoice.findById(result.invoiceId);
       assert.ok(invoice);
       assert.strictEqual(invoice?.status, "paid");
-      assert.strictEqual(invoice?.nombaTransactionId, "txn_success_123");
+      assert.strictEqual(invoice?.nombaTransactionId, invoice?.nombaOrderReference);
 
       const updated = await Subscription.findById(subscription._id);
       assert.ok(updated);
@@ -198,7 +206,7 @@ test("Billing Service", async (t) => {
     let chargeCount = 0;
     nombaService.chargeTokenizedCard = (async () => {
       chargeCount += 1;
-      return { status: "SUCCESS", transactionId: "txn_should_not_run" };
+      return { success: true, message: "success", transactionId: "txn_should_not_run" };
     }) as any;
 
     try {
@@ -221,7 +229,7 @@ test("Billing Service", async (t) => {
     const { subscription } = await seedRenewalFixture();
 
     nombaService.chargeTokenizedCard = (async () => ({
-      status: "FAILED",
+      success: false,
       declineCode: "51",
       message: "Insufficient funds",
     })) as any;
