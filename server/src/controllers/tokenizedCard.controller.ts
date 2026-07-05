@@ -3,12 +3,10 @@ import { nombaService } from "../services/nomba.service.js";
 import { sendSuccess, AppError } from "../utils/apiResponse.js";
 import { logger } from "../utils/logger.js";
 import {
-  requestSaveCardAuthSchema,
-  requestSavedCardAuthSchema,
-  submitUserOtpSchema,
   updateTokenizedCardSchema,
   deleteTokenizedCardSchema,
 } from "../validators/tokenizedCard.validator.js";
+
 
 /**
  * Tokenized Card Controller — Wraps Nomba's tokenized-card endpoints.
@@ -126,92 +124,6 @@ export async function listTokenizedCards(
   }
 }
 
-// ============================================================
-// GET USER SAVED CARDS (OTP-gated)
-// Charge: GET /v1/checkout/user-card/{orderReference}
-// ============================================================
-
-/**
- * GET /api/tokenized-cards/user/:orderReference
- *
- * Retrieves the saved cards for a specific customer.
- *
- * This endpoint is OTP-gated — Nomba requires the merchant to:
- *  1. First call POST /v1/checkout/user-card/saved-card/auth (not yet implemented)
- *     → Nomba sends an OTP to the customer's registered mobile number
- *  2. Then call this endpoint with that OTP in the `otp` query param
- *     → Nomba validates the OTP and returns the customer's saved cards
- *
- * This two-step design prevents unauthenticated access to stored card details.
- *
- * Path Parameters:
- *   - orderReference: string (required) — The original checkout order reference
- *
- * Query Parameters:
- *   - otp: string (required) — OTP sent to customer's mobile number
- *
- * Response:
- *   {
- *     tokenizedCardData: Array — the customer's saved card records
- *     total:             number
- *   }
- *
- * Usage example:
- *   GET /api/tokenized-cards/user/90e81e8a-bc14-4ebf-89c0-57da752cca58?otp=123456
- */
-export async function getUserSavedCards(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    // Guard: Nomba must be configured
-    if (!nombaService.isConfigured()) {
-      throw new AppError(
-        "Nomba integration is not configured. Set NOMBA_CLIENT_ID and NOMBA_CLIENT_SECRET.",
-        503
-      );
-    }
-
-    const orderReference = req.params["orderReference"] as string;
-    const otp = req.query["otp"] as string | undefined;
-
-    // Validate required params
-    if (!orderReference || orderReference.trim() === "") {
-      throw new AppError(
-        "Path param 'orderReference' is required.",
-        400
-      );
-    }
-
-    if (!otp || otp.trim() === "") {
-      throw new AppError(
-        "Query param 'otp' is required. Call POST /checkout/user-card/saved-card/auth first to trigger OTP delivery to the customer.",
-        400
-      );
-    }
-
-    logger.info(
-      {
-        tenantId: req.tenantId,
-        orderReference,
-        // Never log the OTP value itself
-        otpProvided: true,
-      },
-      "getUserSavedCards: proxying to Nomba"
-    );
-
-    const result = await nombaService.getUserSavedCards(orderReference, otp);
-
-    sendSuccess(res, {
-      orderReference,
-      tokenizedCardData: result.tokenizedCardData,
-      total:             result.total,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
 
 // ============================================================
 // REQUEST OTP — BEFORE SAVING A CARD
@@ -246,53 +158,7 @@ export async function getUserSavedCards(
  *   400 — missing/invalid body fields
  *   503 — Nomba integration not configured
  */
-export async function requestSaveCardAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    if (!nombaService.isConfigured()) {
-      throw new AppError(
-        "Nomba integration is not configured. Set NOMBA_CLIENT_ID and NOMBA_CLIENT_SECRET.",
-        503
-      );
-    }
 
-    // Validate body against Zod schema
-    const parsed = requestSaveCardAuthSchema.safeParse(req.body);
-    if (!parsed.success) {
-      const messages = parsed.error.issues
-        .map((e) => `${e.path.map(String).join(".")}: ${e.message}`)
-        .join("; ");
-      throw new AppError(`Validation failed — ${messages}`, 400);
-    }
-
-    const { orderReference, phoneNumber } = parsed.data;
-
-    logger.info(
-      {
-        tenantId:       req.tenantId,
-        orderReference,
-        // Mask the phone — only log the last 4 digits
-        phoneTail:      phoneNumber.slice(-4),
-      },
-      "requestSaveCardAuth: triggering Nomba OTP for card-save"
-    );
-
-    const result = await nombaService.requestSaveCardAuth(orderReference, phoneNumber);
-
-    sendSuccess(res, {
-      success:        result.success,
-      message:        result.message,
-      orderReference,
-      // Helpful hint for the calling client on what to do next
-      nextStep: "Submit the OTP the customer received via POST /api/tokenized-cards/user-card",
-    });
-  } catch (error) {
-    next(error);
-  }
-}
 
 // ============================================================
 // REQUEST OTP — BEFORE FETCHING SAVED CARDS
@@ -326,50 +192,7 @@ export async function requestSaveCardAuth(
  *   400 — missing/invalid body fields
  *   503 — Nomba integration not configured
  */
-export async function requestSavedCardAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    if (!nombaService.isConfigured()) {
-      throw new AppError(
-        "Nomba integration is not configured. Set NOMBA_CLIENT_ID and NOMBA_CLIENT_SECRET.",
-        503
-      );
-    }
 
-    // Validate body against Zod schema
-    const parsed = requestSavedCardAuthSchema.safeParse(req.body);
-    if (!parsed.success) {
-      const messages = parsed.error.issues
-        .map((e) => `${e.path.map(String).join(".")}: ${e.message}`)
-        .join("; ");
-      throw new AppError(`Validation failed — ${messages}`, 400);
-    }
-
-    const { orderReference } = parsed.data;
-
-    logger.info(
-      {
-        tenantId: req.tenantId,
-        orderReference,
-      },
-      "requestSavedCardAuth: triggering Nomba OTP for saved-card fetch"
-    );
-
-    const result = await nombaService.requestSavedCardAuth(orderReference);
-
-    sendSuccess(res, {
-      success:        result.success,
-      message:        result.message,
-      orderReference,
-      nextStep: "Submit the OTP the customer received via GET /api/tokenized-cards/user/:orderReference?otp=<otp>",
-    });
-  } catch (error) {
-    next(error);
-  }
-}
 
 // ============================================================
 // SUBMIT USER OTP — COMPLETE CARD SAVE
@@ -408,52 +231,7 @@ export async function requestSavedCardAuth(
  *   400 — missing/invalid body fields, invalid OTP format
  *   503 — Nomba integration not configured
  */
-export async function submitUserOtp(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    if (!nombaService.isConfigured()) {
-      throw new AppError(
-        "Nomba integration is not configured. Set NOMBA_CLIENT_ID and NOMBA_CLIENT_SECRET.",
-        503
-      );
-    }
 
-    // Validate body against Zod schema
-    const parsed = submitUserOtpSchema.safeParse(req.body);
-    if (!parsed.success) {
-      const messages = parsed.error.issues
-        .map((e) => `${e.path.map(String).join(".")}: ${e.message}`)
-        .join("; ");
-      throw new AppError(`Validation failed — ${messages}`, 400);
-    }
-
-    const { orderReference, phoneNumber, otp } = parsed.data;
-
-    logger.info(
-      {
-        tenantId:       req.tenantId,
-        orderReference,
-        phoneTail:      phoneNumber.slice(-4),
-        // NEVER log OTP values — only log that one was provided
-        otpProvided:    true,
-      },
-      "submitUserOtp: submitting customer OTP to Nomba for card save"
-    );
-
-    const result = await nombaService.submitUserOtp(orderReference, phoneNumber, otp);
-
-    sendSuccess(res, {
-      success:        result.success,
-      message:        result.message,
-      orderReference,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
 
 // ============================================================
 // UPDATE TOKENIZED CARD
@@ -619,3 +397,193 @@ export async function deleteTokenizedCard(
     next(error);
   }
 }
+
+// ============================================================
+// SUBMIT CUSTOMER CARD DETAILS
+// Charge: POST /v1/checkout/checkout-card-detail
+// ============================================================
+
+/**
+ * POST /api/checkout/card-detail
+ *
+ * Submits the customer's card credentials to Nomba to initiate a direct
+ * card-payment transaction. This is the entry point of the embedded/direct
+ * card-payment flow (as opposed to the hosted Nomba checkout page).
+ *
+ * RESPONSE CODE SEMANTICS (data.responseCode):
+ *   "00" — Payment complete. No further steps required.
+ *   "T0" — Nomba dispatched an OTP to the customer's phone.
+ *           Next: POST /api/checkout/card-otp with the otp + transactionId.
+ *   "S0" — 3D Secure authentication is required.
+ *           Next: Redirect the customer to data.secureAuthenticationData.acsUrl.
+ *
+ * CARD SAVE FLOW: If saveCard=true in the request, the card will only be
+ * fully tokenized AFTER the customer completes the card-save OTP flow:
+ *   → POST /api/tokenized-cards/user-card/auth  (trigger card-save OTP)
+ *   → POST /api/tokenized-cards/user-card       (submit card-save OTP)
+ *
+ * Request Body:
+ *   {
+ *     cardDetails: {
+ *       cardCVV:          number   — 3–4 digit CVV
+ *       cardExpiryMonth:  number   — 1–12
+ *       cardExpiryYear:   number   — current year or later
+ *       cardNumber:       string   — 13–19 digit PAN
+ *       cardPin:          number   — 4–6 digit PIN
+ *     }
+ *     key:              string   — RSA encryption key or empty string ""
+ *     orderReference:   string   — UUID from POST /v1/checkout/order
+ *     saveCard:         boolean  — whether to save card for future use
+ *     deviceInformation: {
+ *       httpBrowserLanguage:          string   e.g. "en-GB"
+ *       httpBrowserJavaEnabled:       string   "true" | "false"
+ *       httpBrowserJavaScriptEnabled: string   "true" | "false"
+ *       httpBrowserColorDepth:        string   e.g. "30"
+ *       httpBrowserScreenHeight:      string   e.g. "900"
+ *       httpBrowserScreenWidth:       string   e.g. "1500"
+ *       httpBrowserTimeDifference:    string   e.g. "-60"
+ *       userAgentBrowserValue:        string   browser user agent
+ *       deviceChannel:                string   e.g. "Browser"
+ *     }
+ *   }
+ *
+ * Response:
+ *   {
+ *     status:        boolean — true when submission was accepted
+ *     message:       string  — human-readable status
+ *     responseCode:  string  — "00" | "T0" | "S0"
+ *     transactionId: string  — use in subsequent checkout-card-otp call
+ *     nextAction:    string  — human-readable next-step hint
+ *     secureAuthenticationData?: { jwt, md, acsUrl, termUrl }
+ *   }
+ *
+ * Errors:
+ *   400 — validation failure (missing fields, invalid card number format, etc.)
+ *   503 — Nomba integration not configured
+ */
+
+
+// ============================================================
+// SUBMIT CUSTOMER CARD OTP (Payment Authorization OTP)
+// Charge: POST /v1/checkout/checkout-card-otp
+// ============================================================
+
+/**
+ * POST /api/checkout/card-otp
+ *
+ * Submits the payment OTP that Nomba dispatched to the customer's phone
+ * during the card-detail submission step (when responseCode was "T0").
+ *
+ * ⚠️  IMPORTANT: This is the PAYMENT authorization OTP — it is completely
+ * separate from the card-SAVE OTP flow that uses:
+ *   POST /api/tokenized-cards/user-card/auth   (trigger card-save OTP)
+ *   POST /api/tokenized-cards/user-card         (submit card-save OTP)
+ *
+ * WHEN TO CALL:
+ *   Only when POST /api/checkout/card-detail returned { responseCode: "T0" }.
+ *   The transactionId from that response must be included here.
+ *
+ * Request Body:
+ *   {
+ *     otp:            string   — 4–8 digit OTP from the customer's phone
+ *     orderReference: string   — the original checkout order reference UUID
+ *     transactionId:  string   — returned by POST /api/checkout/card-detail
+ *   }
+ *
+ * Response:
+ *   {
+ *     status:        boolean — true when the OTP was accepted and payment authorized
+ *     message:       string  — e.g. "success"
+ *     orderReference: string
+ *     transactionId:  string
+ *   }
+ *
+ * Errors:
+ *   400 — validation failure or invalid/expired OTP
+ *   503 — Nomba integration not configured
+ */
+
+
+// ============================================================
+// RESEND OTP TO CUSTOMER'S PHONE
+// Charge: POST /v1/checkout/resend-otp
+// ============================================================
+
+/**
+ * POST /api/checkout/resend-otp
+ *
+ * Re-triggers the payment OTP dispatch to the customer's phone.
+ * Call this when the customer has not received or has lost the OTP that
+ * was sent during card-detail submission (when responseCode was "T0").
+ *
+ * Nomba will re-send the OTP to the mobile number registered with the order.
+ *
+ * WHEN TO CALL:
+ *   Only after POST /api/checkout/card-detail returned { responseCode: "T0" }
+ *   and the customer reports not receiving the OTP. This avoids the customer
+ *   having to re-enter their card details.
+ *
+ * Request Body:
+ *   {
+ *     orderReference: string — the original checkout order reference UUID
+ *   }
+ *
+ * Response:
+ *   {
+ *     success:        boolean — true when Nomba dispatched the OTP again
+ *     message:        string  — e.g. "success"
+ *     orderReference: string
+ *     nextStep:       string  — reminder to submit via POST /api/checkout/card-otp
+ *   }
+ *
+ * Errors:
+ *   400 — validation failure (missing or invalid orderReference)
+ *   503 — Nomba integration not configured
+ */
+
+
+// ============================================================
+// CONFIRM CHECKOUT TRANSACTION RECEIPT
+// POST /v1/checkout/confirm-transaction-receipt
+// ============================================================
+
+/**
+ * POST /api/checkout/confirm-transaction-receipt
+ *
+ * Fetches the checkout transaction details and confirms the final payment
+ * status after the customer has either:
+ *   (a) Submitted a payment OTP (following POST /api/checkout/card-otp), OR
+ *   (b) Made a bank transfer to the flash account number.
+ *
+ * This is the canonical way to get the authoritative payment status from
+ * Nomba. Use the returned `order` object to:
+ *   - Display a success/failure receipt to the customer
+ *   - Update your internal order records
+ *   - Trigger post-payment webhooks or subscription activations
+ *
+ * ⚠️  POLLING: Do NOT call this endpoint in a tight loop.
+ * Wait for the customer to finish their action, then call once.
+ * If still pending, use exponential backoff or await a Nomba webhook.
+ *
+ * Request Body:
+ *   {
+ *     orderReference: string — the original checkout order reference UUID
+ *   }
+ *
+ * Response (data):
+ *   {
+ *     status:         boolean — true when payment was successful
+ *     message:        string
+ *     orderReference: string
+ *     order: {
+ *       orderId, orderReference, customerId, accountId,
+ *       callbackUrl, customerEmail, amount, currency,
+ *       businessName, businessEmail, businessLogo
+ *     } | null
+ *   }
+ *
+ * Errors:
+ *   400 — validation failure
+ *   503 — Nomba integration not configured
+ */
+

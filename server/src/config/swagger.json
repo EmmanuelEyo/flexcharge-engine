@@ -3915,8 +3915,382 @@
           }
         }
       }
+    },
+    "/checkout/card-detail": {
+      "post": {
+        "summary": "Submit customer card details",
+        "description": "Submits the customer's card credentials to Nomba to initiate a direct card-payment transaction.\n\n**Response code semantics (`data.responseCode`):**\n- `\"00\"` — Payment complete. No further steps needed.\n- `\"T0\"` — Nomba dispatched an OTP to the customer's phone. Next: `POST /api/checkout/card-otp`.\n- `\"S0\"` — 3D Secure authentication required. Redirect to `data.secureAuthenticationData.acsUrl`.\n\nProxies to Nomba API: `POST /v1/checkout/checkout-card-detail`",
+        "tags": ["Checkout"],
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["cardDetails", "orderReference", "saveCard", "deviceInformation"],
+                "properties": {
+                  "cardDetails": {
+                    "type": "object",
+                    "required": ["cardCVV", "cardExpiryMonth", "cardExpiryYear", "cardNumber", "cardPin"],
+                    "properties": {
+                      "cardCVV": { "type": "integer", "example": 123 },
+                      "cardExpiryMonth": { "type": "integer", "minimum": 1, "maximum": 12, "example": 3 },
+                      "cardExpiryYear": { "type": "integer", "example": 2050 },
+                      "cardNumber": { "type": "string", "pattern": "^\\d{13,19}$", "example": "5190752909999995" },
+                      "cardPin": { "type": "integer", "example": 1111 }
+                    }
+                  },
+                  "key": { "type": "string", "description": "RSA encryption key or empty string", "example": "" },
+                  "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
+                  "saveCard": { "type": "boolean", "description": "Save card for future tokenized charges", "example": true },
+                  "deviceInformation": {
+                    "type": "object",
+                    "required": ["httpBrowserLanguage","httpBrowserJavaEnabled","httpBrowserJavaScriptEnabled","httpBrowserColorDepth","httpBrowserScreenHeight","httpBrowserScreenWidth","httpBrowserTimeDifference","userAgentBrowserValue","deviceChannel"],
+                    "properties": {
+                      "httpBrowserLanguage": { "type": "string", "example": "en-GB" },
+                      "httpBrowserJavaEnabled": { "type": "string", "enum": ["true","false"], "example": "true" },
+                      "httpBrowserJavaScriptEnabled": { "type": "string", "enum": ["true","false"], "example": "true" },
+                      "httpBrowserColorDepth": { "type": "string", "example": "30" },
+                      "httpBrowserScreenHeight": { "type": "string", "example": "900" },
+                      "httpBrowserScreenWidth": { "type": "string", "example": "1500" },
+                      "httpBrowserTimeDifference": { "type": "string", "example": "-60" },
+                      "userAgentBrowserValue": { "type": "string", "example": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" },
+                      "deviceChannel": { "type": "string", "example": "Browser" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Card details accepted — inspect data.responseCode for next step",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "status": { "type": "boolean", "example": true },
+                        "message": { "type": "string", "example": "Success" },
+                        "responseCode": { "type": "string", "enum": ["00","T0","S0"], "example": "T0" },
+                        "transactionId": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
+                        "nextAction": { "type": "string", "example": "An OTP has been sent to the customer. Submit it via POST /api/checkout/card-otp with the transactionId." },
+                        "secureAuthenticationData": {
+                          "type": "object",
+                          "description": "Populated only when responseCode is S0",
+                          "properties": {
+                            "jwt": { "type": "string", "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." },
+                            "md": { "type": "string", "example": "6775843012" },
+                            "acsUrl": { "type": "string", "format": "uri", "example": "https://ip:port/merchant.com/callback" },
+                            "termUrl": { "type": "string", "format": "uri", "example": "https://ip:port/merchant.com/callback" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Validation error — missing or invalid card fields" },
+          "401": { "description": "Missing or invalid authentication credentials" },
+          "429": { "description": "Rate limit exceeded" },
+          "500": { "description": "Internal server error or Nomba API failure" },
+          "503": { "description": "Nomba integration not configured" }
+        }
+      }
+    },
+    "/checkout/card-otp": {
+      "post": {
+        "summary": "Submit customer card OTP (payment authorization)",
+        "description": "Submits the payment OTP dispatched to the customer's phone during card-detail submission.\n\n**WHEN TO CALL:** Only when `POST /api/checkout/card-detail` returned `responseCode = \"T0\"`.\n\n**Note:** This is the **payment authorization OTP** — entirely separate from the card-save OTP (`POST /api/tokenized-cards/user-card`).\n\nProxies to Nomba API: `POST /v1/checkout/checkout-card-otp`",
+        "tags": ["Checkout"],
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["otp", "orderReference", "transactionId"],
+                "properties": {
+                  "otp": { "type": "string", "pattern": "^\\d{4,8}$", "minLength": 4, "maxLength": 8, "example": "1234" },
+                  "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
+                  "transactionId": { "type": "string", "description": "Transaction ID returned by POST /api/checkout/card-detail", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
+                }
+              },
+              "example": {
+                "otp": "1234",
+                "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
+                "transactionId": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP accepted and payment authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "status": { "type": "boolean", "example": true },
+                        "message": { "type": "string", "example": "success" },
+                        "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
+                        "transactionId": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Validation error — invalid OTP format or missing transactionId" },
+          "401": { "description": "Missing or invalid authentication credentials" },
+          "429": { "description": "Rate limit exceeded" },
+          "500": { "description": "Internal server error, Nomba API failure, or invalid/expired OTP" },
+          "503": { "description": "Nomba integration not configured" }
+        }
+      }
+    },
+    "/checkout/resend-otp": {
+      "post": {
+        "summary": "Resend payment OTP to customer's phone",
+        "description": "Re-triggers payment OTP dispatch when the customer hasn't received the OTP sent during `POST /api/checkout/card-detail`.\n\n**WHEN TO CALL:** Only after `POST /api/checkout/card-detail` returned `responseCode = \"T0\"` and the customer reports not receiving the OTP.\n\nProxies to Nomba API: `POST /v1/checkout/resend-otp`",
+        "tags": ["Checkout"],
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["orderReference"],
+                "properties": {
+                  "orderReference": { "type": "string", "format": "uuid", "description": "The original checkout order reference", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
+                }
+              },
+              "example": { "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OTP re-sent successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "success": { "type": "boolean", "example": true },
+                        "message": { "type": "string", "example": "success" },
+                        "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
+                        "nextStep": { "type": "string", "example": "Once the customer receives the OTP, submit it via POST /api/checkout/card-otp" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Validation error — missing or invalid orderReference" },
+          "401": { "description": "Missing or invalid authentication credentials" },
+          "429": { "description": "Rate limit exceeded" },
+          "500": { "description": "Internal server error or Nomba API failure" },
+          "503": { "description": "Nomba integration not configured" }
+        }
+      }
+    },
+    "/checkout/confirm-transaction-receipt": {
+      "post": {
+        "summary": "Confirm checkout transaction details",
+        "description": "Fetches the checkout transaction details and confirms the final payment status.\n\n**WHEN TO CALL:** After the customer has either:\n- Submitted a payment OTP via `POST /api/checkout/card-otp`, OR\n- Made a bank transfer to the flash (KTA) account number.\n\nThis is the canonical endpoint to get the authoritative status from Nomba. Use the returned `order` object to display a receipt, update your database, and trigger post-payment webhooks.\n\n⚠️ **POLLING:** Do NOT call this in a tight loop. Wait for the customer to complete their action, then call once. If still pending, use exponential backoff or await a Nomba webhook.\n\nProxies to Nomba API: `POST /v1/checkout/confirm-transaction-receipt`",
+        "tags": ["Checkout"],
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["orderReference"],
+                "properties": {
+                  "orderReference": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The original checkout order reference UUID",
+                    "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
+                  }
+                }
+              },
+              "example": { "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transaction details fetched — check data.status to confirm payment success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "boolean",
+                          "description": "true when the transaction was successful",
+                          "example": true
+                        },
+                        "message": { "type": "string", "example": "success" },
+                        "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
+                        "order": {
+                          "type": "object",
+                          "nullable": true,
+                          "description": "Full order details from Nomba. Null if the order was not found.",
+                          "properties": {
+                            "orderId": { "type": "string", "format": "uuid", "description": "Nomba-generated order ID", "example": "56e03654-0c32-4d3e-bbd6-a9df22994a12" },
+                            "orderReference": { "type": "string", "format": "uuid", "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58" },
+                            "customerId": { "type": "string", "description": "Customer ID", "example": "762878332454" },
+                            "accountId": { "type": "string", "format": "uuid", "description": "Account whose wallet is credited on payment", "example": "56e03654-0c32-4d3e-bbd6-a9df22994a12" },
+                            "callbackUrl": { "type": "string", "format": "uri", "description": "Merchant redirect URL after payment", "example": "https://ip:port/merchant.com/callback" },
+                            "customerEmail": { "type": "string", "format": "email", "example": "abcde@gmail.com" },
+                            "amount": { "type": "string", "description": "Amount paid (as a string decimal)", "example": "10000.00" },
+                            "currency": { "type": "string", "enum": ["NGN"], "example": "NGN" },
+                            "businessName": { "type": "string", "example": "Merchant Ltd" },
+                            "businessEmail": { "type": "string", "format": "email", "example": "abcde@gmail.com" },
+                            "businessLogo": { "type": "string", "format": "uri", "example": "https://ip:port/merchant.com/logo" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "status": true,
+                    "message": "success",
+                    "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
+                    "order": {
+                      "orderId": "56e03654-0c32-4d3e-bbd6-a9df22994a12",
+                      "orderReference": "90e81e8a-bc14-4ebf-89c0-57da752cca58",
+                      "customerId": "762878332454",
+                      "accountId": "56e03654-0c32-4d3e-bbd6-a9df22994a12",
+                      "callbackUrl": "https://ip:port/merchant.com/callback",
+                      "customerEmail": "abcde@gmail.com",
+                      "amount": "10000.00",
+                      "currency": "NGN",
+                      "businessName": "Merchant Ltd",
+                      "businessEmail": "abcde@gmail.com",
+                      "businessLogo": "https://ip:port/merchant.com/logo"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Validation error — missing or invalid orderReference" },
+          "401": { "description": "Missing or invalid authentication credentials" },
+          "429": { "description": "Rate limit exceeded" },
+          "500": { "description": "Internal server error or Nomba API failure" },
+          "503": { "description": "Nomba integration not configured" }
+        }
+      }
+    },
+    "/checkout/flash-account/{orderReference}": {
+      "get": {
+        "summary": "Fetch checkout flash account number for bank transfer",
+        "description": "Returns a dynamically generated flash virtual account number (KTA — Know The Account) that the customer can use to pay via bank transfer instead of card.\n\nThe customer transfers exactly the order amount to the returned account from any Nigerian bank. After Nomba receives and confirms the transfer, call `POST /api/checkout/confirm-transaction-receipt` to verify the payment and retrieve the full order receipt.\n\nProxies to Nomba API: `GET /v1/checkout/get-checkout-kta/{orderReference}`",
+        "tags": ["Checkout"],
+        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "orderReference",
+            "in": "path",
+            "required": true,
+            "description": "The original checkout order reference UUID",
+            "schema": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flash account details returned — instruct customer to transfer the exact order amount to this account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "accountNumber": {
+                          "type": "string",
+                          "description": "Virtual account number the customer should transfer to",
+                          "example": "5678576432"
+                        },
+                        "accountName": {
+                          "type": "string",
+                          "description": "Name of the virtual account",
+                          "example": "Femi Fash"
+                        },
+                        "bankName": {
+                          "type": "string",
+                          "description": "Bank holding the virtual account",
+                          "example": "Nombank Mfb"
+                        },
+                        "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
+                        "nextStep": {
+                          "type": "string",
+                          "description": "Next action the integration should take after showing the account details to the customer",
+                          "example": "Instruct the customer to transfer exactly the order amount to this account. Then confirm payment via POST /api/checkout/confirm-transaction-receipt."
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "accountNumber": "5678576432",
+                    "accountName": "Femi Fash",
+                    "bankName": "Nombank Mfb",
+                    "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
+                    "nextStep": "Instruct the customer to transfer exactly the order amount to this account. Then confirm payment via POST /api/checkout/confirm-transaction-receipt."
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Validation error — missing or invalid orderReference path parameter" },
+          "401": { "description": "Missing or invalid authentication credentials" },
+          "404": { "description": "Order not found for the given orderReference" },
+          "429": { "description": "Rate limit exceeded" },
+          "500": { "description": "Internal server error or Nomba API failure" },
+          "503": { "description": "Nomba integration not configured" }
+        }
+      }
     }
   },
+
   "components": {
     "securitySchemes": {
       "bearerAuth": {
@@ -4421,6 +4795,10 @@
     {
       "name": "Tokenized Cards",
       "description": "Read-only access to Nomba tokenized card records. Wraps GET /v1/checkout/tokenized-card-data and GET /v1/checkout/user-card/{orderReference}."
+    },
+    {
+      "name": "Checkout",
+      "description": "Direct card-payment and bank-transfer flows. Covers: card credential submission, payment OTP authorization, OTP resend, transaction receipt confirmation, and flash virtual account lookup for bank transfers. Proxies POST /v1/checkout/checkout-card-detail, POST /v1/checkout/checkout-card-otp, POST /v1/checkout/resend-otp, POST /v1/checkout/confirm-transaction-receipt, GET /v1/checkout/get-checkout-kta/{orderReference}."
     }
   ]
 }

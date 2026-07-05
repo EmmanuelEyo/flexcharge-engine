@@ -1,10 +1,6 @@
 import { Router } from "express";
 import {
   listTokenizedCards,
-  getUserSavedCards,
-  requestSaveCardAuth,
-  requestSavedCardAuth,
-  submitUserOtp,
   updateTokenizedCard,
   deleteTokenizedCard,
 } from "../controllers/tokenizedCard.controller.js";
@@ -70,37 +66,13 @@ router.use(authenticate);
 // Registered first — all have static path segments so there is no
 // ambiguity with the dynamic /:orderReference GET below.
 
-/**
- * POST /api/tokenized-cards/user-card/saved-card/auth
- * Trigger OTP before fetching the user's saved cards.
- * Called when the order details response indicates hasSavedCards === true.
- */
-router.post("/user-card/saved-card/auth", requestSavedCardAuth);
 
-/**
- * POST /api/tokenized-cards/user-card/auth
- * Trigger OTP before saving a card after a successful payment.
- * Called immediately after payment succeeds and user opts to save their card.
- */
-router.post("/user-card/auth", requestSaveCardAuth);
-
-/**
- * POST /api/tokenized-cards/user-card
- * Submit the user's OTP to finalise and complete card tokenization.
- * This is the last step of the card-save flow.
- */
-router.post("/user-card", submitUserOtp);
 
 // ─── READ ENDPOINTS ──────────────────────────────────────────────────────────
 //
 // Static /user prefix must precede the root / to avoid shadowing conflicts.
 
-/**
- * GET /api/tokenized-cards/user/:orderReference?otp=<otp>
- * Fetch saved cards for a specific customer (OTP-gated).
- * Prerequisite: POST /api/tokenized-cards/user-card/saved-card/auth
- */
-router.get("/user/:orderReference", getUserSavedCards);
+
 
 /**
  * GET /api/tokenized-cards

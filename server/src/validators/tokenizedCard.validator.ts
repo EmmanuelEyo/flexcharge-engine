@@ -37,81 +37,21 @@ const nigerianPhoneRegex = /^(\+?234|0)[789]\d{9}$/;
 //    POST /v1/checkout/user-card/auth
 //    Body: { orderReference, phoneNumber }
 // ---------------------------------------------------------------------------
-export const requestSaveCardAuthSchema = z.object({
-  /**
-   * The original checkout order reference (UUID).
-   * This must be the reference returned when the checkout order was created.
-   */
-  orderReference: z
-    .string("orderReference is required")
-    .uuid("orderReference must be a valid UUID")
-    .trim(),
 
-  /**
-   * The customer's Nigerian mobile phone number.
-   * Nomba will SMS the OTP to this number.
-   * Accepted formats: 08012345678 | +2348012345678 | 2348012345678
-   */
-  phoneNumber: z
-    .string("phoneNumber is required")
-    .trim()
-    .regex(
-      nigerianPhoneRegex,
-      "phoneNumber must be a valid Nigerian mobile number (e.g. 08012345678 or +2348012345678)"
-    ),
-});
 
 // ---------------------------------------------------------------------------
 // 2. Request OTP before FETCHING already-saved cards
 //    POST /v1/checkout/user-card/saved-card/auth
 //    Body: { orderReference }
 // ---------------------------------------------------------------------------
-export const requestSavedCardAuthSchema = z.object({
-  /**
-   * The original checkout order reference (UUID).
-   * Nomba uses this to look up the customer's registered mobile number.
-   */
-  orderReference: z
-    .string("orderReference is required")
-    .uuid("orderReference must be a valid UUID")
-    .trim(),
-});
+
 
 // ---------------------------------------------------------------------------
 // 3. Submit user OTP to confirm card save
 //    POST /v1/checkout/user-card
 //    Body: { orderReference, phoneNumber, otp }
 // ---------------------------------------------------------------------------
-export const submitUserOtpSchema = z.object({
-  /**
-   * The original checkout order reference (UUID).
-   */
-  orderReference: z
-    .string("orderReference is required")
-    .uuid("orderReference must be a valid UUID")
-    .trim(),
 
-  /**
-   * The customer's Nigerian mobile phone number.
-   * Must match the number used in step 1 (POST /user-card/auth).
-   */
-  phoneNumber: z
-    .string("phoneNumber is required")
-    .trim()
-    .regex(
-      nigerianPhoneRegex,
-      "phoneNumber must be a valid Nigerian mobile number (e.g. 08012345678 or +2348012345678)"
-    ),
-
-  /**
-   * The one-time code received on the customer's mobile phone.
-   * Nomba sends a numeric OTP — we accept 4–8 digits defensively.
-   */
-  otp: z
-    .string("otp is required")
-    .trim()
-    .regex(/^\d{4,8}$/, "otp must be a 4–8 digit numeric code"),
-});
 
 // ---------------------------------------------------------------------------
 // 4. Update tokenized card — reassign card token to a new email address
@@ -172,8 +112,146 @@ export const deleteTokenizedCardSchema = z.object({
 // ---------------------------------------------------------------------------
 // Inferred TypeScript types
 // ---------------------------------------------------------------------------
-export type RequestSaveCardAuthInput  = z.infer<typeof requestSaveCardAuthSchema>;
-export type RequestSavedCardAuthInput = z.infer<typeof requestSavedCardAuthSchema>;
-export type SubmitUserOtpInput        = z.infer<typeof submitUserOtpSchema>;
+
+
+
 export type UpdateTokenizedCardInput  = z.infer<typeof updateTokenizedCardSchema>;
 export type DeleteTokenizedCardInput  = z.infer<typeof deleteTokenizedCardSchema>;
+
+// ---------------------------------------------------------------------------
+// 6. Submit customer card details — initiate a direct card payment
+//    POST /v1/checkout/checkout-card-detail
+//    Body: { cardDetails, key, orderReference, saveCard, deviceInformation }
+// ---------------------------------------------------------------------------
+
+/**
+ * Schema for the nested cardDetails object.
+ * Numbers are sent as-is (Nomba accepts them as integers per their docs).
+ */
+const cardDetailsSchema = z.object({
+  /** CVV / security code on the back of the card */
+  cardCVV: z
+    .number("cardDetails.cardCVV is required")
+    .int("cardDetails.cardCVV must be an integer")
+    .min(100, "cardDetails.cardCVV must be at least 3 digits")
+    .max(9999, "cardDetails.cardCVV must be at most 4 digits"),
+
+  /** Two-digit expiry month (1–12) */
+  cardExpiryMonth: z
+    .number("cardDetails.cardExpiryMonth is required")
+    .int("cardDetails.cardExpiryMonth must be an integer")
+    .min(1, "cardDetails.cardExpiryMonth must be between 1 and 12")
+    .max(12, "cardDetails.cardExpiryMonth must be between 1 and 12"),
+
+  /** Four-digit expiry year (current year or later) */
+  cardExpiryYear: z
+    .number("cardDetails.cardExpiryYear is required")
+    .int("cardDetails.cardExpiryYear must be an integer")
+    .min(new Date().getFullYear(), "cardDetails.cardExpiryYear must be a current or future year"),
+
+  /** PAN — 13 to 19 digit card number */
+  cardNumber: z
+    .string("cardDetails.cardNumber is required")
+    .trim()
+    .regex(/^\d{13,19}$/, "cardDetails.cardNumber must be 13–19 digits"),
+
+  /** 4–6 digit card PIN */
+  cardPin: z
+    .number("cardDetails.cardPin is required")
+    .int("cardDetails.cardPin must be an integer")
+    .min(1000, "cardDetails.cardPin must be at least 4 digits")
+    .max(999999, "cardDetails.cardPin must be at most 6 digits"),
+});
+
+/**
+ * Schema for the deviceInformation object.
+ * All fields are strings per the Nomba API spec (even boolean flags like
+ * httpBrowserJavaEnabled are sent as "true"/"false" strings).
+ */
+const deviceInformationSchema = z.object({
+  httpBrowserLanguage: z
+    .string("deviceInformation.httpBrowserLanguage is required")
+    .min(2, "deviceInformation.httpBrowserLanguage cannot be empty"),
+
+  httpBrowserJavaEnabled: z
+    .string("deviceInformation.httpBrowserJavaEnabled is required")
+    .regex(/^(true|false)$/, "deviceInformation.httpBrowserJavaEnabled must be \"true\" or \"false\""),
+
+  httpBrowserJavaScriptEnabled: z
+    .string("deviceInformation.httpBrowserJavaScriptEnabled is required")
+    .regex(/^(true|false)$/, "deviceInformation.httpBrowserJavaScriptEnabled must be \"true\" or \"false\""),
+
+  httpBrowserColorDepth: z
+    .string("deviceInformation.httpBrowserColorDepth is required")
+    .min(1, "deviceInformation.httpBrowserColorDepth cannot be empty"),
+
+  httpBrowserScreenHeight: z
+    .string("deviceInformation.httpBrowserScreenHeight is required")
+    .min(1, "deviceInformation.httpBrowserScreenHeight cannot be empty"),
+
+  httpBrowserScreenWidth: z
+    .string("deviceInformation.httpBrowserScreenWidth is required")
+    .min(1, "deviceInformation.httpBrowserScreenWidth cannot be empty"),
+
+  httpBrowserTimeDifference: z
+    .string("deviceInformation.httpBrowserTimeDifference is required")
+    .min(1, "deviceInformation.httpBrowserTimeDifference cannot be empty"),
+
+  userAgentBrowserValue: z
+    .string("deviceInformation.userAgentBrowserValue is required")
+    .min(1, "deviceInformation.userAgentBrowserValue cannot be empty"),
+
+  deviceChannel: z
+    .string("deviceInformation.deviceChannel is required")
+    .min(1, "deviceInformation.deviceChannel cannot be empty"),
+});
+
+
+
+// ---------------------------------------------------------------------------
+// 7. Submit customer card OTP — authorize payment after OTP is received
+//    POST /v1/checkout/checkout-card-otp
+//    Body: { otp, orderReference, transactionId }
+// ---------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// 8. Resend OTP to customer's phone — retry OTP dispatch
+//    POST /v1/checkout/resend-otp
+//    Body: { orderReference }
+// ---------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// Inferred TypeScript types for checkout card payment flow
+// ---------------------------------------------------------------------------
+
+
+
+
+// ---------------------------------------------------------------------------
+// 9. Confirm checkout transaction receipt
+//    POST /v1/checkout/confirm-transaction-receipt
+//    Body: { orderReference }
+//
+//    Call this after:
+//      - The customer submitted a payment OTP (POST /api/checkout/card-otp), OR
+//      - The customer made a bank transfer to the flash account number.
+//    Use the response to verify the final payment status and display a receipt.
+// ---------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// 10. Fetch checkout flash account number — path param only, no body
+//     GET /v1/checkout/get-checkout-kta/{orderReference}
+//
+//     The orderReference comes from req.params (not req.body), so we use a
+//     separate, reusable schema that validates just the UUID string directly.
+// ---------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// Inferred TypeScript types for transaction verification & transfer flow
+// ---------------------------------------------------------------------------
+
+
