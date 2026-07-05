@@ -260,7 +260,7 @@ export async function getPortalWallet(
     const wallet = await Wallet.findOne({
       customerId: req.customerId,
       tenantId: req.tenantId,
-    });
+    }).populate("walletGroupId");
 
     if (!wallet) {
       throw new NotFoundError("Wallet");
@@ -287,28 +287,29 @@ export async function updateWalletSettings(
     const wallet = await Wallet.findOne({
       customerId: req.customerId,
       tenantId: req.tenantId,
-    });
+    }).populate("walletGroupId");
 
-    if (!wallet) {
-      throw new NotFoundError("Wallet");
-    }
+    if (!wallet) throw new NotFoundError("Wallet");
+
+    // The walletGroup contains the boundaries
+    const group: any = wallet.walletGroupId || {};
 
     if (autoTopUpAmount !== undefined) {
-      if (wallet.minAutoTopUpAmount && autoTopUpAmount < wallet.minAutoTopUpAmount) {
-        throw new Error(`Amount is below the minimum allowed (${wallet.minAutoTopUpAmount})`);
+      if (group.minAutoTopUpAmount && autoTopUpAmount < group.minAutoTopUpAmount) {
+        throw new Error(`Amount is below the minimum allowed (${group.minAutoTopUpAmount})`);
       }
-      if (wallet.maxAutoTopUpAmount && autoTopUpAmount > wallet.maxAutoTopUpAmount) {
-        throw new Error(`Amount exceeds the maximum allowed (${wallet.maxAutoTopUpAmount})`);
+      if (group.maxAutoTopUpAmount && autoTopUpAmount > group.maxAutoTopUpAmount) {
+        throw new Error(`Amount exceeds the maximum allowed (${group.maxAutoTopUpAmount})`);
       }
       wallet.autoTopUpAmount = Number(autoTopUpAmount);
     }
 
     if (autoTopUpTrigger !== undefined) {
-      if (wallet.minAutoTopUpTrigger && autoTopUpTrigger < wallet.minAutoTopUpTrigger) {
-        throw new Error(`Trigger is below the minimum allowed (${wallet.minAutoTopUpTrigger})`);
+      if (group.minAutoTopUpTrigger && autoTopUpTrigger < group.minAutoTopUpTrigger) {
+        throw new Error(`Trigger is below the minimum allowed (${group.minAutoTopUpTrigger})`);
       }
-      if (wallet.maxAutoTopUpTrigger && autoTopUpTrigger > wallet.maxAutoTopUpTrigger) {
-        throw new Error(`Trigger exceeds the maximum allowed (${wallet.maxAutoTopUpTrigger})`);
+      if (group.maxAutoTopUpTrigger && autoTopUpTrigger > group.maxAutoTopUpTrigger) {
+        throw new Error(`Trigger exceeds the maximum allowed (${group.maxAutoTopUpTrigger})`);
       }
       wallet.autoTopUpTrigger = Number(autoTopUpTrigger);
     }

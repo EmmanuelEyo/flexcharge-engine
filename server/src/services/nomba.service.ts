@@ -1063,20 +1063,23 @@ class NombaService {
   async refundCheckoutOrder(params: {
     transactionId: string;
     amount: number;
-    accountNumber: string;
-    bankCode: string;
+    accountNumber?: string;
+    bankCode?: string;
   }): Promise<{ status: string }> {
     const authHeaders = await this.getAuthHeaders();
     const amountInNaira = (params.amount / 100).toFixed(2);
 
+    const payload: Record<string, any> = {
+      transactionId: params.transactionId,
+      amount: amountInNaira,
+    };
+
+    if (params.accountNumber) payload.accountNumber = params.accountNumber;
+    if (params.bankCode) payload.bankCode = params.bankCode;
+
     const response = await this.client.post(
       `/v1/checkout/refund`,
-      {
-        transactionId: params.transactionId,
-        amount: amountInNaira,
-        accountNumber: params.accountNumber,
-        bankCode: params.bankCode,
-      },
+      payload,
       { headers: authHeaders }
     );
 

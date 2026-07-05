@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { Wallet } from "../models/Wallet.js";
 import { WalletTransaction } from "../models/WalletTransaction.js";
 import { queueWebhook } from "./webhook.service.js";
+import { WalletGroupService } from "./walletGroup.service.js";
 import { logger } from "../utils/logger.js";
 import { AppError, NotFoundError } from "../utils/apiResponse.js";
 
@@ -35,16 +36,19 @@ export async function createWallet(
     return existingWallet;
   }
 
+  const defaultGroup = await WalletGroupService.ensureDefaultWalletGroup(tenantId);
+
   const wallet = await Wallet.create({
     tenantId,
     customerId,
     subscriptionId,
+    walletGroupId: defaultGroup._id,
     balance: 0,
     currency: "NGN",
     lowBalanceThreshold: 50000, // Default 500 NGN
   });
 
-  logger.info({ walletId: wallet._id, customerId }, "Wallet created");
+  logger.info({ walletId: wallet._id, customerId, groupId: defaultGroup._id }, "Wallet created");
   return wallet;
 }
 

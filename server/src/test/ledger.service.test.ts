@@ -135,7 +135,7 @@ test("Ledger Service", async (t) => {
     // Mock nomba refund
     nombaService.refundCheckoutOrder = async () => ({ status: "SUCCESS" });
 
-    await ledgerService.processRefund(tenant._id.toString(), "inv_123", "nomba_123", 1000, { accountNumber: "1", bankCode: "2" });
+    await ledgerService.processRefund(tenant._id.toString(), "inv_123", "nomba_123", 1000);
 
     const ledger = await TenantLedger.findOne({ tenantId: tenant._id });
     assert.strictEqual(ledger!.availableBalance, 4000);

@@ -47,8 +47,8 @@ export default function InvoicesPage() {
       setError("");
       await api.post("/ledger/v1/refunds", {
         invoiceId: selectedInvoice._id,
-        bankCode,
-        accountNumber,
+        bankCode: bankCode || undefined,
+        accountNumber: accountNumber || undefined,
       });
       setIsRefundModalOpen(false);
       setSelectedInvoice(null);
@@ -211,24 +211,22 @@ export default function InvoicesPage() {
               
               <div className="space-y-4 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Customer Bank Code</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Customer Bank Code (Optional)</label>
                   <input
                     type="text"
                     value={bankCode}
                     onChange={(e) => setBankCode(e.target.value)}
-                    required
                     placeholder="e.g. 058"
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all"
                   />
-                  <p className="mt-1.5 text-xs text-slate-500">Nomba destination bank code.</p>
+                  <p className="mt-1.5 text-xs text-slate-500">Nomba destination bank code (only needed for bank transfers).</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Customer Account Number</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Customer Account Number (Optional)</label>
                   <input
                     type="text"
                     value={accountNumber}
                     onChange={(e) => setAccountNumber(e.target.value)}
-                    required
                     placeholder="10-digit account"
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all"
                   />

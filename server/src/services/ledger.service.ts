@@ -146,7 +146,7 @@ class LedgerService {
     invoiceId: string,
     nombaTransactionId: string,
     amount: number,
-    customerBankDetails: { accountNumber: string; bankCode: string }
+    customerBankDetails?: { accountNumber?: string; bankCode?: string }
   ): Promise<void> {
     const ledger = await TenantLedger.findOne({ tenantId });
     if (!ledger) throw new Error("Ledger not found");
@@ -160,8 +160,8 @@ class LedgerService {
       const refundResponse = await nombaService.refundCheckoutOrder({
         transactionId: nombaTransactionId,
         amount,
-        accountNumber: customerBankDetails.accountNumber,
-        bankCode: customerBankDetails.bankCode,
+        accountNumber: customerBankDetails?.accountNumber,
+        bankCode: customerBankDetails?.bankCode,
       });
 
       if (refundResponse.status !== "SUCCESS") {
