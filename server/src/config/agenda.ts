@@ -61,11 +61,11 @@ export function getAgenda(): Agenda {
     });
 
     agenda.on("start", (job) => {
-      logger.debug({ jobName: job.attrs.name }, "Job started");
+      logger.info({ jobName: job.attrs.name }, "Job started");
     });
 
     agenda.on("complete", (job) => {
-      logger.debug({ jobName: job.attrs.name }, "Job completed");
+      logger.info({ jobName: job.attrs.name }, "Job completed");
     });
 
     agenda.on("fail", (err, job) => {

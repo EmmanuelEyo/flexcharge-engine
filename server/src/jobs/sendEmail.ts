@@ -37,7 +37,7 @@ interface EmailJobPayload {
   /** Who receives the email: the customer or the tenant/developer. */
   recipientType: "customer" | "tenant";
   /** The type of email to send. */
-  type: "welcome" | "receipt" | "dunning" | "cancel" | "new_subscriber" | "payment_failed" | "manual_invoice" | "manual_invoice_reminder" | "withdrawal_successful" | "withdrawal_failed" | "refund_deducted" | "refund_processed";
+  type: "welcome" | "receipt" | "dunning" | "cancel" | "new_subscriber" | "payment_failed" | "manual_invoice" | "manual_invoice_reminder" | "withdrawal_successful" | "withdrawal_failed" | "refund_deducted" | "refund_processed" | "portal_link";
   /** Database IDs used to look up the records at dispatch time. */
   tenantId: string;
   customerId?: string;
@@ -47,6 +47,7 @@ interface EmailJobPayload {
   failureReason?: string;
   attemptNumber?: number;
   cancellationReason?: string;
+  portalUrl?: string;
 }
 
 /**
@@ -79,7 +80,7 @@ export function defineSendEmailJob(agenda: Agenda): void {
     const data = job.attrs.data!;
 
     if (!isEmailConfigured()) {
-      logger.debug({ type: data.type, recipientType: data.recipientType }, "Email skipped — not configured");
+      logger.warn({ type: data.type, recipientType: data.recipientType }, "Email skipped — not configured");
       return;
     }
 
