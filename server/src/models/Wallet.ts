@@ -22,6 +22,7 @@ export interface IWallet extends Document {
   tenantId: Types.ObjectId;
   customerId: Types.ObjectId;
   subscriptionId?: Types.ObjectId;
+  walletGroupId?: Types.ObjectId;
 
   balance: number;               // Current credit balance in KOBO
   currency: string;              // "NGN"
@@ -32,10 +33,6 @@ export interface IWallet extends Document {
   autoTopUpAmount?: number;      // Amount to recharge in KOBO
   autoTopUpTrigger?: number;     // Trigger auto top-up when balance drops below this (KOBO)
 
-  minAutoTopUpAmount?: number;
-  maxAutoTopUpAmount?: number;
-  minAutoTopUpTrigger?: number;
-  maxAutoTopUpTrigger?: number;
   autoTopUpConsentedAt?: Date;
   autoTopUpConsentedIp?: string;
 
@@ -61,6 +58,11 @@ const walletSchema = new Schema<IWallet>(
     subscriptionId: {
       type: Schema.Types.ObjectId,
       ref: "Subscription",
+    },
+    walletGroupId: {
+      type: Schema.Types.ObjectId,
+      ref: "WalletGroup",
+      index: true,
     },
 
     balance: {
@@ -98,11 +100,7 @@ const walletSchema = new Schema<IWallet>(
       type: Number,
       min: [0, "Auto top-up trigger cannot be negative"],
     },
-    minAutoTopUpAmount: { type: Number, min: 0 },
-    maxAutoTopUpAmount: { type: Number, min: 0 },
-    minAutoTopUpTrigger: { type: Number, min: 0 },
-    maxAutoTopUpTrigger: { type: Number, min: 0 },
-    autoTopUpConsentedAt: { type: Date },
+    autoTopUpConsentedAt: Date,
     autoTopUpConsentedIp: { type: String, trim: true },
 
     isActive: {

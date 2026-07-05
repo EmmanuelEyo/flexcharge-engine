@@ -26,19 +26,23 @@ export default function WalletDrawer({
   const [description, setDescription] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
-  const [minAutoTopUpAmount, setMinAutoTopUpAmount] = useState<number | "">(
-    wallet.minAutoTopUpAmount ? wallet.minAutoTopUpAmount / 100 : "",
-  );
-  const [maxAutoTopUpAmount, setMaxAutoTopUpAmount] = useState<number | "">(
-    wallet.maxAutoTopUpAmount ? wallet.maxAutoTopUpAmount / 100 : "",
-  );
-  const [minAutoTopUpTrigger, setMinAutoTopUpTrigger] = useState<number | "">(
-    wallet.minAutoTopUpTrigger ? wallet.minAutoTopUpTrigger / 100 : "",
-  );
-  const [maxAutoTopUpTrigger, setMaxAutoTopUpTrigger] = useState<number | "">(
-    wallet.maxAutoTopUpTrigger ? wallet.maxAutoTopUpTrigger / 100 : "",
-  );
+  const [groups, setGroups] = useState<any[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState(wallet.walletGroupId || "");
   const [settingsLoading, setSettingsLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchGroups = async () => {
+      try {
+        const res = await api.get("/wallet-groups");
+        setGroups(res.data.data || []);
+      } catch (err) {
+        toast.error("Failed to load wallet groups");
+      }
+    };
+    if (activeTab === "settings") {
+      fetchGroups();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -89,25 +93,10 @@ export default function WalletDrawer({
     try {
       setSettingsLoading(true);
       setError("");
-      await api.patch(`/wallets/${wallet._id}/auto-top-up`, {
-        minAutoTopUpAmount:
-          minAutoTopUpAmount !== ""
-            ? Number(minAutoTopUpAmount) * 100
-            : undefined,
-        maxAutoTopUpAmount:
-          maxAutoTopUpAmount !== ""
-            ? Number(maxAutoTopUpAmount) * 100
-            : undefined,
-        minAutoTopUpTrigger:
-          minAutoTopUpTrigger !== ""
-            ? Number(minAutoTopUpTrigger) * 100
-            : undefined,
-        maxAutoTopUpTrigger:
-          maxAutoTopUpTrigger !== ""
-            ? Number(maxAutoTopUpTrigger) * 100
-            : undefined,
+      await api.patch(`/wallets/${wallet._id}/wallet-group`, {
+        walletGroupId: selectedGroupId
       });
-      toast.success("Auto top-up boundaries updated");
+      toast.success("Wallet assigned to new group");
       onUpdate();
     } catch (err: any) {
       const msg = err.response?.data?.error || "Failed to update settings";
@@ -302,116 +291,41 @@ export default function WalletDrawer({
           )}
 
           {activeTab === "settings" && (
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="pb-4 border-b border-slate-100">
-                <h4 className="text-sm font-medium text-slate-900">
-                  Auto Top-Up Boundaries
-                </h4>
-                <p className="text-xs text-slate-500 mt-1">
-                  Define optional boundary constraints within which the customer
-                  can configure their auto-refills.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Min Refill Amount (NGN)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="No limit"
-                      value={minAutoTopUpAmount}
-                      onChange={(e) =>
-                        setMinAutoTopUpAmount(
-                          e.target.value === "" ? "" : Number(e.target.value),
-                        )
-                      }
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Max Refill Amount (NGN)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="No limit"
-                      value={maxAutoTopUpAmount}
-                      onChange={(e) =>
-                        setMaxAutoTopUpAmount(
-                          e.target.value === "" ? "" : Number(e.target.value),
-                        )
-                      }
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
+            <div className="space-y-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900 mb-1">
+                    Group Assignment
+                  </h4>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Assigning a wallet to a group defines its auto-top-up boundaries and configuration limits.
+                  </p>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Min Trigger (NGN)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="No limit"
-                      value={minAutoTopUpTrigger}
-                      onChange={(e) =>
-                        setMinAutoTopUpTrigger(
-                          e.target.value === "" ? "" : Number(e.target.value),
-                        )
-                      }
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Max Trigger (NGN)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="No limit"
-                      value={maxAutoTopUpTrigger}
-                      onChange={(e) =>
-                        setMaxAutoTopUpTrigger(
-                          e.target.value === "" ? "" : Number(e.target.value),
-                        )
-                      }
-                      className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                    Select Wallet Group
+                  </label>
+                  <select
+                    value={selectedGroupId}
+                    onChange={(e) => setSelectedGroupId(e.target.value)}
+                    className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                  >
+                    <option value="" disabled>Select a group...</option>
+                    {groups.map(g => (
+                      <option key={g._id} value={g._id}>{g.name} {g.isDefault ? "(Default)" : ""}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               <div className="pt-2">
-                {(() => {
-                  const originalMinAmount = wallet.minAutoTopUpAmount ? wallet.minAutoTopUpAmount / 100 : "";
-                  const originalMaxAmount = wallet.maxAutoTopUpAmount ? wallet.maxAutoTopUpAmount / 100 : "";
-                  const originalMinTrigger = wallet.minAutoTopUpTrigger ? wallet.minAutoTopUpTrigger / 100 : "";
-                  const originalMaxTrigger = wallet.maxAutoTopUpTrigger ? wallet.maxAutoTopUpTrigger / 100 : "";
-
-                  const hasChanges =
-                    minAutoTopUpAmount !== originalMinAmount ||
-                    maxAutoTopUpAmount !== originalMaxAmount ||
-                    minAutoTopUpTrigger !== originalMinTrigger ||
-                    maxAutoTopUpTrigger !== originalMaxTrigger;
-
-                  return (
-                    <Button
-                      onClick={handleSaveSettings}
-                      disabled={settingsLoading || !hasChanges}
-                      className="w-full"
-                    >
-                      {settingsLoading ? "Saving..." : "Save Settings"}
-                    </Button>
-                  );
-                })()}
+                <Button
+                  onClick={handleSaveSettings}
+                  disabled={settingsLoading || selectedGroupId === (wallet.walletGroupId || "")}
+                  className="w-full"
+                >
+                  {settingsLoading ? "Saving..." : "Save Assignment"}
+                </Button>
               </div>
             </div>
           )}

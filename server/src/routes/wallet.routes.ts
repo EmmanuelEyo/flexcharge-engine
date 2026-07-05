@@ -6,7 +6,7 @@ import {
   topUp,
   deduct,
   listTransactions,
-  updateAutoTopUp,
+  assignWalletGroup,
 } from "../controllers/wallet.controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
@@ -41,6 +41,6 @@ router.get("/:id", getWallet);
 router.post("/:id/top-up", validate(topUpWalletSchema), topUp);
 router.post("/:id/deduct", validate(debitWalletSchema), deduct);
 router.get("/:id/transactions", listTransactions);
-router.patch("/:id/auto-top-up", validate(updateAutoTopUpSchema), updateAutoTopUp);
+router.patch("/:id/wallet-group", assignWalletGroup);
 
 export default router;

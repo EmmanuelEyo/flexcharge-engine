@@ -87,8 +87,13 @@ export async function listWallets(
     if (req.query.customerId) {
       filter.customerId = req.query.customerId;
     }
+    if (req.query.walletGroupId) {
+      filter.walletGroupId = req.query.walletGroupId;
+    }
 
-    const wallets = await Wallet.find(filter).sort({ createdAt: -1 });
+    const wallets = await Wallet.find(filter)
+      .populate("customerId")
+      .sort({ createdAt: -1 });
 
     sendSuccess(res, wallets);
   } catch (error) {
@@ -184,24 +189,17 @@ export async function listTransactions(
   }
 }
 
-export async function updateAutoTopUp(
+export async function assignWalletGroup(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
-    const input = req.body as UpdateAutoTopUpInput;
+    const input = req.body as { walletGroupId: string };
     
-    // Explicitly restrict to only min/max bounds
-    const updateData: Record<string, number> = {};
-    if (input.minAutoTopUpAmount !== undefined) updateData.minAutoTopUpAmount = input.minAutoTopUpAmount;
-    if (input.maxAutoTopUpAmount !== undefined) updateData.maxAutoTopUpAmount = input.maxAutoTopUpAmount;
-    if (input.minAutoTopUpTrigger !== undefined) updateData.minAutoTopUpTrigger = input.minAutoTopUpTrigger;
-    if (input.maxAutoTopUpTrigger !== undefined) updateData.maxAutoTopUpTrigger = input.maxAutoTopUpTrigger;
-
     const wallet = await Wallet.findOneAndUpdate(
       { ...tenantFilter(req), _id: req.params.id },
-      { $set: updateData },
+      { $set: { walletGroupId: new Types.ObjectId(input.walletGroupId) } },
       { returnDocument: "after", runValidators: true }
     );
 
