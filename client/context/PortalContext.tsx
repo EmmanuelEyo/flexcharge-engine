@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import portalApi from "@/lib/portalApi";
 
 export interface Customer {
@@ -40,10 +41,18 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const pathname = usePathname();
+
   useEffect(() => {
-    // Only fetch if we have a token or expect one
-    fetchCustomer();
-  }, []);
+    // Only fetch the customer profile if we are on an authenticated route (not the entry portal link page)
+    if (pathname !== "/portal") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchCustomer();
+    } else {
+      // If we are on the entry page, resolve loading gracefully
+      setLoading(false);
+    }
+  }, [pathname]);
 
   return (
     <PortalContext.Provider value={{ customer, loading, refresh: fetchCustomer }}>

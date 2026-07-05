@@ -114,7 +114,7 @@ test("Portal Wallet Endpoints", async (t) => {
 
     assert.strictEqual(res.body.success, true);
     assert.ok(res.body.data.checkoutLink.includes("mock_manual_topup"));
-    assert.ok(res.body.data.orderReference.startsWith(`manual_topup_${wallet._id}_`));
+    assert.ok(res.body.data.orderReference.startsWith(`man_topup_${wallet._id}_`));
 
     // Check if pending invoice was created
     const invoice = await Invoice.findOne({ nombaOrderReference: res.body.data.orderReference });

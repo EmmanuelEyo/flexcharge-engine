@@ -221,7 +221,7 @@ export const analyticsService = {
           dailyWalletConsumption: walletConsumption,
         },
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: "after" }
     );
   }
 };
