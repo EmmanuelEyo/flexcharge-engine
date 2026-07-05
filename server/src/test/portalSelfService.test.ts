@@ -7,7 +7,10 @@ import { setupTestDB, teardownTestDB, clearTestDB } from "./setup.js";
 import { Subscription } from "../models/Subscription.js";
 import { Plan } from "../models/Plan.js";
 import { Invoice } from "../models/Invoice.js";
+import { Wallet } from "../models/Wallet.js";
 import { Customer } from "../models/Customer.js";
+import { env } from "../config/environment.js";
+import jwt from "jsonwebtoken";
 import { Tenant } from "../models/Tenant.js";
 import { ApiKey } from "../models/ApiKey.js";
 
@@ -48,14 +51,13 @@ beforeEach(async () => {
   });
   customerId = customer._id as mongoose.Types.ObjectId;
 
-  // Create Portal Session
-  const sessionRes = await request(app)
-    .post("/api/portal/sessions")
-    .set("x-api-key", tenantApiKey)
-    .send({ customerId: customerId.toString() })
-    .expect(201);
-
-  portalToken = sessionRes.body.data.portalToken;
+  // 4. Generate Portal Token Manually
+  const customerDoc = await Customer.findById(customerId);
+  portalToken = jwt.sign(
+    { customerId, tenantId: customerDoc!.tenantId.toString(), type: "portal" },
+    env.PORTAL_JWT_SECRET,
+    { expiresIn: "15m" }
+  );
 });
 
 test("Portal Self-Service Endpoints", async () => {

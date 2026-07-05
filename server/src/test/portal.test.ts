@@ -3,6 +3,9 @@ import assert from "node:assert";
 import request from "supertest";
 import app from "../app.js";
 import { setupTestDB, teardownTestDB, clearTestDB } from "./setup.js";
+import jwt from "jsonwebtoken";
+import { env } from "../config/environment.js";
+import { Customer } from "../models/Customer.js";
 
 let tenantToken: string;
 let tenantApiKey: string;
@@ -58,9 +61,14 @@ test("Customer Portal Session — E2E Flow", async () => {
     .expect(201);
 
   assert.strictEqual(sessionRes.body.success, true);
-  const portalToken = sessionRes.body.data.portalToken;
-  assert.ok(portalToken);
-  assert.ok(sessionRes.body.data.portalUrl);
+  assert.strictEqual(sessionRes.body.data.message, "Portal access link has been sent to the customer's email.");
+
+  const customer = await Customer.findById(customerId);
+  const portalToken = jwt.sign(
+    { customerId, tenantId: customer!.tenantId.toString(), type: "portal" },
+    env.PORTAL_JWT_SECRET,
+    { expiresIn: "15m" }
+  );
 
   // Authenticate customer portal request using the portalToken
   const profileRes = await request(app)
@@ -81,7 +89,12 @@ test("Customer Portal Session — Security Isolation Constraints", async () => {
     .send({ customerId })
     .expect(201);
 
-  const portalToken = sessionRes.body.data.portalToken;
+  const customer = await Customer.findById(customerId);
+  const portalToken = jwt.sign(
+    { customerId, tenantId: customer!.tenantId.toString(), type: "portal" },
+    env.PORTAL_JWT_SECRET,
+    { expiresIn: "15m" }
+  );
 
   // 1. Verify standard Tenant JWT cannot access Customer portal route
   await request(app)

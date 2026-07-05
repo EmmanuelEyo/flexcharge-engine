@@ -1,6 +1,7 @@
 import { Router } from "express";
 import express from "express";
 import { Subscription } from "../models/Subscription.js";
+import { Customer } from "../models/Customer.js";
 import { Invoice } from "../models/Invoice.js";
 import { nombaService } from "../services/nomba.service.js";
 import { queueWebhook } from "../services/webhook.service.js";
@@ -200,6 +201,32 @@ router.post(
         payload?.data?.transactionId ||
         payload?.transactionId;
 
+      // --- Process Manual Wallet Top-Up ---
+      if (orderReference.startsWith("manual_topup_")) {
+        const invoice = await Invoice.findOne({ nombaOrderReference: orderReference });
+        if (invoice && invoice.status === "pending") {
+          invoice.status = "paid";
+          invoice.paidAt = new Date();
+          if (transactionId) invoice.nombaTransactionId = transactionId;
+          await invoice.save();
+
+          // Credit Tenant Ledger
+          await ledgerService.creditTenant(invoice.tenantId, invoice.amount, invoice._id.toString());
+
+          // Credit Customer Wallet
+          const walletId = orderReference.split("_")[2];
+          const { creditWallet } = await import("../services/wallet.service.js");
+          await creditWallet(walletId, invoice.amount, "Manual Top-Up via Portal");
+
+          logger.info({ walletId, amount: invoice.amount }, "Manual wallet top-up successful");
+        } else if (invoice) {
+          logger.info({ orderReference }, "Manual top-up invoice already paid or failed");
+        } else {
+          logger.warn({ orderReference }, "Manual top-up invoice not found");
+        }
+        return;
+      }
+
       // Find subscription by checkout order reference (Initial Checkout)
       const subscription = await Subscription.findOne({
         nombaCheckoutOrderRef: orderReference,
@@ -236,6 +263,12 @@ router.post(
               sub.tokenKey = tokenizedCardData.tokenKey;
               sub.cardLast4 = tokenizedCardData.cardLast4;
               sub.cardBrand = tokenizedCardData.cardBrand;
+
+              await Customer.findByIdAndUpdate(sub.customerId, {
+                tokenKey: tokenizedCardData.tokenKey,
+                cardLast4: tokenizedCardData.cardLast4,
+                cardBrand: tokenizedCardData.cardBrand,
+              });
             }
 
             (sub as any)._previousStatus = sub.status;
@@ -306,11 +339,17 @@ router.post(
         return;
       }
 
-      // Save tokenized card data on subscription
+      // Save tokenized card data on subscription and customer
       if (tokenizedCardData?.tokenKey) {
         subscription.tokenKey = tokenizedCardData.tokenKey;
         subscription.cardLast4 = tokenizedCardData.cardLast4;
         subscription.cardBrand = tokenizedCardData.cardBrand;
+
+        await Customer.findByIdAndUpdate(subscription.customerId, {
+          tokenKey: tokenizedCardData.tokenKey,
+          cardLast4: tokenizedCardData.cardLast4,
+          cardBrand: tokenizedCardData.cardBrand,
+        });
       }
 
       // Transition: pending → active

@@ -14,8 +14,10 @@ import {
   processDunningRetry,
 } from "../services/dunning.service.js";
 import { nombaService } from "../services/nomba.service.js";
+import { ledgerService } from "../services/ledger.service.js";
 
 const originalChargeTokenizedCard = nombaService.chargeTokenizedCard;
+const originalCreditTenant = ledgerService.creditTenant;
 
 async function seedDunningFixture() {
   const tenant = await Tenant.create({
@@ -88,10 +90,12 @@ test("Dunning Service", async (t) => {
   t.beforeEach(async () => {
     await clearTestDB();
     nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
+    ledgerService.creditTenant = async () => {};
   });
 
   t.after(async () => {
     nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
+    ledgerService.creditTenant = originalCreditTenant;
     await teardownTestDB();
   });
 
@@ -117,13 +121,17 @@ test("Dunning Service", async (t) => {
     const { subscription, invoice, attempt, plan } = await seedDunningFixture();
 
     nombaService.chargeTokenizedCard = (async () => ({
-      status: "SUCCESS",
-      transactionId: "txn_dunning_success",
+      success: true,
+      message: "success",
+      transactionId: "txn_recovery_123",
     })) as any;
 
     try {
       const result = await processDunningRetry(attempt._id as Types.ObjectId);
 
+      if (!result.success) {
+        console.error("PROCESS DUNNING FAILED:", result);
+      }
       assert.strictEqual(result.success, true);
 
       const updatedAttempt = await DunningAttempt.findById(attempt._id);
@@ -135,6 +143,7 @@ test("Dunning Service", async (t) => {
       assert.ok(updatedAttempt?.executedAt);
       assert.ok(updatedInvoice);
       assert.strictEqual(updatedInvoice?.status, "paid");
+      assert.strictEqual(updatedInvoice?.nombaTransactionId, `retry_${invoice._id}_${attempt.attemptNumber}`);
       assert.ok(updatedSubscription);
       assert.strictEqual(updatedSubscription?.status, "active");
       assert.strictEqual(updatedSubscription?.dunningAttemptCount, 0);
@@ -158,7 +167,7 @@ test("Dunning Service", async (t) => {
     const { subscription, invoice, attempt } = await seedDunningFixture();
 
     nombaService.chargeTokenizedCard = (async () => ({
-      status: "FAILED",
+      success: false,
       declineCode: "51",
       message: "Insufficient funds",
     })) as any;

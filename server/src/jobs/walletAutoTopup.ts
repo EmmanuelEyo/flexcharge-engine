@@ -4,6 +4,7 @@ import { Subscription } from "../models/Subscription.js";
 import { Invoice } from "../models/Invoice.js";
 import { nombaService } from "../services/nomba.service.js";
 import { creditWallet } from "../services/wallet.service.js";
+import { ledgerService } from "../services/ledger.service.js";
 import { logger } from "../utils/logger.js";
 
 /**
@@ -26,13 +27,11 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
   agenda.define(WALLET_AUTO_TOPUP_JOB_NAME, async (_job) => {
     try {
       // Find wallets needing top-up
-      // Note: MongoDB cannot do field-to-field comparison directly in find without $expr
       const walletsNeedingTopUp = await Wallet.find({
         autoTopUp: true,
         isActive: true,
-        subscriptionId: { $exists: true },
         $expr: { $lte: ["$balance", "$autoTopUpTrigger"] },
-      });
+      }).populate("customerId");
 
       if (walletsNeedingTopUp.length === 0) {
         logger.debug("No wallets need auto top-up");
@@ -52,19 +51,15 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
             continue;
           }
 
-          // Get the subscription to find the payment token
-          const subscription = await Subscription.findById(wallet.subscriptionId)
-            .populate("customerId");
+          const customer = wallet.customerId as any;
 
-          if (!subscription || subscription.status !== "active" || !subscription.tokenKey) {
+          if (!customer || !customer.tokenKey) {
             logger.warn(
-              { walletId: wallet._id, subscriptionId: wallet.subscriptionId },
-              "Wallet linked to invalid or un-tokenized subscription — skipping auto top-up"
+              { walletId: wallet._id, customerId: customer?._id },
+              "Wallet auto top-up failed: No vaulted payment method found for customer"
             );
             continue;
           }
-
-          const customer = subscription.customerId as any;
 
           // Charge via Nomba
           const orderReference = `topup_${wallet._id}_${Date.now()}`;
@@ -72,7 +67,6 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
 
           const invoice = await Invoice.create({
             tenantId: wallet.tenantId,
-            subscriptionId: subscription._id,
             customerId: customer._id,
             amount,
             currency: wallet.currency,
@@ -83,7 +77,7 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
           });
 
           const chargeResult = await nombaService.chargeTokenizedCard({
-            tokenKey: subscription.tokenKey,
+            tokenKey: customer.tokenKey,
             orderReference,
             amount,
             currency: wallet.currency as "NGN" | "CDF" | "USD" | undefined,
@@ -103,6 +97,13 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
               wallet._id as any,
               amount,
               "Auto Top-Up",
+              invoice._id.toString()
+            );
+
+            // Credit tenant ledger
+            await ledgerService.creditTenant(
+              wallet.tenantId,
+              amount,
               invoice._id.toString()
             );
 

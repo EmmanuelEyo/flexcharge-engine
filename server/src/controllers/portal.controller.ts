@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { Customer } from "../models/Customer.js";
 import { Subscription } from "../models/Subscription.js";
 import { Invoice } from "../models/Invoice.js";
+import { Wallet } from "../models/Wallet.js";
 import { nombaService } from "../services/nomba.service.js";
 import { tenantFilter } from "../middleware/tenantScope.js";
 import {
@@ -11,6 +12,7 @@ import {
   NotFoundError,
 } from "../utils/apiResponse.js";
 import { env } from "../config/environment.js";
+import { queueEmail } from "../utils/emailDispatcher.js";
 import { logger } from "../utils/logger.js";
 
 /**
@@ -73,9 +75,15 @@ export async function createPortalSession(
       "Portal session created"
     );
 
-    sendCreated(res, {
-      portalToken,
+    // Dispatch the email containing the magic link directly to the customer
+    await queueEmail("customer", "portal_link", {
+      tenantId: req.tenantId!,
+      customerId: customer._id,
       portalUrl,
+    } as any);
+
+    sendCreated(res, {
+      message: "Portal access link has been sent to the customer's email.",
       expiresIn: env.PORTAL_JWT_EXPIRES_IN,
     });
   } catch (error) {
@@ -229,8 +237,165 @@ export async function cancelPortalSubscription(
 
     logger.info({ subscriptionId: subscription._id }, "Subscription scheduled for cancellation via portal");
 
-    sendSuccess(res, subscription);
+    res.status(200).json({
+      success: true,
+      message: "Subscription scheduled for cancellation",
+      data: subscription,
+    });
   } catch (error) {
     next(error);
   }
 }
+
+/**
+ * GET /portal/wallet
+ * Fetches the customer's wallet if they have one.
+ */
+export async function getPortalWallet(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const wallet = await Wallet.findOne({
+      customerId: req.customerId,
+      tenantId: req.tenantId,
+    });
+
+    if (!wallet) {
+      throw new NotFoundError("Wallet");
+    }
+
+    sendSuccess(res, wallet);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /portal/wallet/settings
+ * Updates auto-topup configuration for the customer's wallet.
+ */
+export async function updateWalletSettings(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { autoTopUp, autoTopUpAmount, autoTopUpTrigger } = req.body;
+
+    const wallet = await Wallet.findOne({
+      customerId: req.customerId,
+      tenantId: req.tenantId,
+    });
+
+    if (!wallet) {
+      throw new NotFoundError("Wallet");
+    }
+
+    if (autoTopUpAmount !== undefined) {
+      if (wallet.minAutoTopUpAmount && autoTopUpAmount < wallet.minAutoTopUpAmount) {
+        throw new Error(`Amount is below the minimum allowed (${wallet.minAutoTopUpAmount})`);
+      }
+      if (wallet.maxAutoTopUpAmount && autoTopUpAmount > wallet.maxAutoTopUpAmount) {
+        throw new Error(`Amount exceeds the maximum allowed (${wallet.maxAutoTopUpAmount})`);
+      }
+      wallet.autoTopUpAmount = Number(autoTopUpAmount);
+    }
+
+    if (autoTopUpTrigger !== undefined) {
+      if (wallet.minAutoTopUpTrigger && autoTopUpTrigger < wallet.minAutoTopUpTrigger) {
+        throw new Error(`Trigger is below the minimum allowed (${wallet.minAutoTopUpTrigger})`);
+      }
+      if (wallet.maxAutoTopUpTrigger && autoTopUpTrigger > wallet.maxAutoTopUpTrigger) {
+        throw new Error(`Trigger exceeds the maximum allowed (${wallet.maxAutoTopUpTrigger})`);
+      }
+      wallet.autoTopUpTrigger = Number(autoTopUpTrigger);
+    }
+
+    if (autoTopUp !== undefined) {
+      const isTurningOn = Boolean(autoTopUp) && !wallet.autoTopUp;
+      wallet.autoTopUp = Boolean(autoTopUp);
+
+      if (isTurningOn) {
+        // Log explicit consent
+        wallet.autoTopUpConsentedAt = new Date();
+        wallet.autoTopUpConsentedIp = req.ip || req.headers["x-forwarded-for"]?.toString() || "unknown";
+      }
+    }
+
+    await wallet.save();
+
+    logger.info({ walletId: wallet._id, autoTopUp }, "Customer updated auto-topup settings via portal");
+
+    sendSuccess(res, wallet);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /portal/wallet/topup
+ * Creates a checkout order for a manual top-up and returns the link.
+ */
+export async function initiateWalletTopUp(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { amount } = req.body;
+
+    if (!amount || amount <= 0) {
+      throw new Error("Invalid top-up amount");
+    }
+
+    const customer = await Customer.findOne({
+      _id: req.customerId,
+      tenantId: req.tenantId,
+    });
+    if (!customer) throw new NotFoundError("Customer");
+
+    const wallet = await Wallet.findOne({
+      customerId: req.customerId,
+      tenantId: req.tenantId,
+    });
+    if (!wallet) throw new NotFoundError("Wallet");
+
+    // We don't link manual top-ups directly to a subscription for the Nomba payload
+    // to avoid confusing the webhook. We'll use a special order prefix.
+    const orderReference = `manual_topup_${wallet._id}_${Date.now()}`;
+
+    const checkout = await nombaService.createCheckoutOrder({
+      orderReference,
+      amount,
+      currency: wallet.currency as "NGN" | "CDF" | "USD" | undefined,
+      customerEmail: customer.email,
+      customerId: customer._id.toString(),
+      callbackUrl: `${env.FRONTEND_URL || "http://localhost:3000"}/portal/dashboard?topup=success`,
+    });
+
+    // Create a pending invoice to represent this manual top-up payment attempt
+    const invoice = await Invoice.create({
+      tenantId: wallet.tenantId,
+      customerId: customer._id,
+      amount,
+      currency: wallet.currency,
+      status: "pending",
+      nombaOrderReference: orderReference,
+      description: "Manual Wallet Top-Up",
+      isRenewal: false,
+    });
+
+    logger.info({ walletId: wallet._id, orderReference, amount }, "Customer initiated manual wallet top-up");
+
+    sendSuccess(res, {
+      checkoutLink: checkout.checkoutLink,
+      orderReference: checkout.orderReference,
+      invoiceId: invoice._id,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+

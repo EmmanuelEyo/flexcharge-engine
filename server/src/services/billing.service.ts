@@ -7,6 +7,7 @@ import { DunningAttempt } from "../models/DunningAttempt.js";
 import { nombaService } from "./nomba.service.js";
 import { queueWebhook } from "./webhook.service.js";
 import { queueEmail } from "../utils/emailDispatcher.js";
+import { ledgerService } from "./ledger.service.js";
 import { logger } from "../utils/logger.js";
 import { INTERVAL_DAYS } from "../types/subscription.types.js";
 import type { PlanInterval } from "../types/subscription.types.js";
@@ -220,6 +221,13 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
       invoice.paidAt = new Date();
       invoice.nombaTransactionId = orderReference; // Use orderReference as our internal ref
       await invoice.save();
+
+      // Credit tenant ledger
+      await ledgerService.creditTenant(
+        subscription.tenantId,
+        plan.amount,
+        invoice._id.toString()
+      );
 
       // Advance billing dates
       const now = new Date();

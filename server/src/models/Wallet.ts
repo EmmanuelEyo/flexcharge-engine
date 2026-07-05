@@ -32,6 +32,13 @@ export interface IWallet extends Document {
   autoTopUpAmount?: number;      // Amount to recharge in KOBO
   autoTopUpTrigger?: number;     // Trigger auto top-up when balance drops below this (KOBO)
 
+  minAutoTopUpAmount?: number;
+  maxAutoTopUpAmount?: number;
+  minAutoTopUpTrigger?: number;
+  maxAutoTopUpTrigger?: number;
+  autoTopUpConsentedAt?: Date;
+  autoTopUpConsentedIp?: string;
+
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -91,6 +98,12 @@ const walletSchema = new Schema<IWallet>(
       type: Number,
       min: [0, "Auto top-up trigger cannot be negative"],
     },
+    minAutoTopUpAmount: { type: Number, min: 0 },
+    maxAutoTopUpAmount: { type: Number, min: 0 },
+    minAutoTopUpTrigger: { type: Number, min: 0 },
+    maxAutoTopUpTrigger: { type: Number, min: 0 },
+    autoTopUpConsentedAt: { type: Date },
+    autoTopUpConsentedIp: { type: String, trim: true },
 
     isActive: {
       type: Boolean,
