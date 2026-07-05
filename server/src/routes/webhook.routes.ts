@@ -202,7 +202,7 @@ router.post(
         payload?.transactionId;
 
       // --- Process Manual Wallet Top-Up ---
-      if (orderReference.startsWith("manual_topup_")) {
+      if (orderReference.startsWith("man_topup_")) {
         const invoice = await Invoice.findOne({ nombaOrderReference: orderReference });
         if (invoice && invoice.status === "pending") {
           invoice.status = "paid";

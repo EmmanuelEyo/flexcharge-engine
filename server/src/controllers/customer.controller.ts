@@ -150,7 +150,7 @@ export async function updateCustomer(
     const customer = await Customer.findOneAndUpdate(
       { ...tenantFilter(req), _id: req.params.id },
       { $set: input },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!customer) {

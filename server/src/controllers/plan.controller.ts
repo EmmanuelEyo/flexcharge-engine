@@ -118,7 +118,7 @@ export async function updatePlan(
     const plan = await Plan.findOneAndUpdate(
       { ...tenantFilter(req), _id: req.params.id },
       { $set: input },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!plan) {
@@ -150,7 +150,7 @@ export async function deletePlan(
     const plan = await Plan.findOneAndUpdate(
       { ...tenantFilter(req), _id: req.params.id },
       { isActive: false },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!plan) {

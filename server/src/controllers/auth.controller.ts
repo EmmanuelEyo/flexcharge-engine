@@ -182,7 +182,7 @@ export async function revokeApiKey(
     const key = await ApiKey.findOneAndUpdate(
       { _id: req.params.id, tenantId: req.tenantId },
       { isActive: false },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!key) {
@@ -215,7 +215,7 @@ export async function updateWebhookUrl(
     const tenant = await Tenant.findByIdAndUpdate(
       req.tenantId,
       { webhookUrl },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!tenant) {

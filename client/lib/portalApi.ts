@@ -29,7 +29,11 @@ portalApi.interceptors.response.use(
     // We should probably redirect to an expired session page, but for now we'll just throw.
     if (error?.response?.status === 401 && typeof window !== "undefined") {
       sessionStorage.removeItem("fc_portal_token");
-      window.location.href = "/portal"; // Will redirect to an error state or request a new link
+      
+      // Safeguard: Only redirect if not already on the portal entry page
+      if (window.location.pathname !== "/portal") {
+        window.location.href = "/portal"; // Will redirect to an error state or request a new link
+      }
     }
     const message = error?.response?.data?.message ?? error?.response?.data?.error ?? error.message ?? "An error occurred";
     return Promise.reject(new Error(message));

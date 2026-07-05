@@ -188,7 +188,7 @@ export async function requestPaymentMethodUpdate(
 
     if (!subscription) throw new NotFoundError("Active Subscription");
 
-    const orderReference = `card_update_${subscription._id}_${Date.now()}`;
+    const orderReference = `card_up_${subscription._id}_${Date.now()}`;
     const checkout = await nombaService.createCheckoutOrder({
       orderReference,
       amount: 5000, // Small auth charge (50 NGN)
@@ -364,7 +364,7 @@ export async function initiateWalletTopUp(
 
     // We don't link manual top-ups directly to a subscription for the Nomba payload
     // to avoid confusing the webhook. We'll use a special order prefix.
-    const orderReference = `manual_topup_${wallet._id}_${Date.now()}`;
+    const orderReference = `man_topup_${wallet._id}_${Date.now()}`;
 
     const checkout = await nombaService.createCheckoutOrder({
       orderReference,

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Button from "@/components/ui/Button";
 import api from "@/lib/api";
+import toast from "react-hot-toast";
 
 interface WalletDrawerProps {
   wallet: any;
@@ -70,12 +71,15 @@ export default function WalletDrawer({
         amount: amountKobo,
         description: description || undefined,
       });
+      toast.success(`Wallet successfully ${type === "top-up" ? "credited" : "debited"}`);
       setAmount("");
       setDescription("");
       onUpdate();
       setActiveTab("transactions");
     } catch (err: any) {
-      setError(err.response?.data?.error || `Failed to ${type}`);
+      const msg = err.response?.data?.error || `Failed to ${type}`;
+      setError(msg);
+      toast.error(msg);
     } finally {
       setActionLoading(false);
     }
@@ -103,9 +107,12 @@ export default function WalletDrawer({
             ? Number(maxAutoTopUpTrigger) * 100
             : undefined,
       });
+      toast.success("Auto top-up boundaries updated");
       onUpdate();
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to update settings");
+      const msg = err.response?.data?.error || "Failed to update settings";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSettingsLoading(false);
     }
@@ -383,13 +390,28 @@ export default function WalletDrawer({
               </div>
 
               <div className="pt-2">
-                <Button
-                  onClick={handleSaveSettings}
-                  disabled={settingsLoading}
-                  className="w-full"
-                >
-                  {settingsLoading ? "Saving..." : "Save Settings"}
-                </Button>
+                {(() => {
+                  const originalMinAmount = wallet.minAutoTopUpAmount ? wallet.minAutoTopUpAmount / 100 : "";
+                  const originalMaxAmount = wallet.maxAutoTopUpAmount ? wallet.maxAutoTopUpAmount / 100 : "";
+                  const originalMinTrigger = wallet.minAutoTopUpTrigger ? wallet.minAutoTopUpTrigger / 100 : "";
+                  const originalMaxTrigger = wallet.maxAutoTopUpTrigger ? wallet.maxAutoTopUpTrigger / 100 : "";
+
+                  const hasChanges =
+                    minAutoTopUpAmount !== originalMinAmount ||
+                    maxAutoTopUpAmount !== originalMaxAmount ||
+                    minAutoTopUpTrigger !== originalMinTrigger ||
+                    maxAutoTopUpTrigger !== originalMaxTrigger;
+
+                  return (
+                    <Button
+                      onClick={handleSaveSettings}
+                      disabled={settingsLoading || !hasChanges}
+                      className="w-full"
+                    >
+                      {settingsLoading ? "Saving..." : "Save Settings"}
+                    </Button>
+                  );
+                })()}
               </div>
             </div>
           )}

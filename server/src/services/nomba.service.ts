@@ -597,9 +597,15 @@ class NombaService {
       { headers: authHeaders }
     );
 
+    const responseData = response.data as any;
+    if (!responseData || !responseData.data || !responseData.data.orderReference) {
+      const errorMsg = responseData?.description || `Nomba checkout failed with HTTP status ${response.status}`;
+      throw new Error(errorMsg);
+    }
+
     logger.info(
       {
-        orderReference: response.data.data.orderReference,
+        orderReference: responseData.data.orderReference,
         path: checkoutPath,
         hasMetaData: !!params.orderMetaData,
         hasSplit: !!params.splitRequest,
