@@ -615,6 +615,56 @@ class NombaService {
   }
 
   // ============================================================
+  // CANCEL CHECKOUT ORDER
+  // Per Nomba API: POST /v1/checkout/order/cancel
+  // ============================================================
+
+  /**
+   * Cancel an incomplete or pending checkout order.
+   *
+   * @param orderReference - The unique reference of the checkout order to cancel
+   * @returns { success: boolean, message: string }
+   */
+  async cancelCheckoutOrder(orderReference: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    if (!orderReference?.trim()) {
+      throw new Error("cancelCheckoutOrder: orderReference is required");
+    }
+
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.post<{
+      code: string;
+      description: string;
+      data: {
+        success: boolean;
+        message: string;
+      };
+    }>(
+      "/v1/checkout/order/cancel",
+      { orderReference },
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00") {
+      throw new Error(
+        `Nomba cancelCheckoutOrder failed: [${code}] ${description}`
+      );
+    }
+
+    logger.info(
+      { orderReference, success: data.success, message: data.message },
+      "Nomba checkout order cancelled"
+    );
+
+    return data;
+  }
+
+  // ============================================================
   // GET CHECKOUT ORDER DETAILS
   // Per Nomba API: GET /v1/checkout/order/{orderReference}
   // ============================================================
