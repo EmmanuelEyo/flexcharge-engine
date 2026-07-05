@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense } from "react";
 import portalApi from "@/lib/portalApi";
 import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
 import { useSearchParams } from "next/navigation";
 import { usePortal } from "@/context/PortalContext";
 
@@ -26,6 +27,19 @@ interface Invoice {
   createdAt: string;
 }
 
+interface Wallet {
+  _id: string;
+  balance: number;
+  currency: string;
+  autoTopUp: boolean;
+  autoTopUpAmount: number;
+  autoTopUpTrigger: number;
+  minAutoTopUpAmount?: number;
+  maxAutoTopUpAmount?: number;
+  minAutoTopUpTrigger?: number;
+  maxAutoTopUpTrigger?: number;
+}
+
 function PortalDashboardContent() {
   const searchParams = useSearchParams();
   const { customer, loading: customerLoading } = usePortal();
@@ -33,24 +47,51 @@ function PortalDashboardContent() {
   const [loading, setLoading] = useState(true);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [wallet, setWallet] = useState<Wallet | null>(null);
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
+  const [showTopupBanner, setShowTopupBanner] = useState(false);
   
   const [actionLoading, setActionLoading] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  
+  // Wallet modals state
+  const [showTopupModal, setShowTopupModal] = useState(false);
+  const [topupAmount, setTopupAmount] = useState<string>("");
+  const [topupLoading, setTopupLoading] = useState(false);
+  const [topupError, setTopupError] = useState("");
+
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
+  interface ToastState {
+    message: string;
+    type: "success" | "error";
+  }
+  const [toast, setToast] = useState<ToastState | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [subRes, invRes] = await Promise.all([
+        const [subRes, invRes, walletRes] = await Promise.all([
           portalApi.get("/portal/subscription").catch(() => null),
           portalApi.get("/portal/invoices").catch(() => null),
+          portalApi.get("/portal/wallet").catch(() => null),
         ]);
 
         if (subRes?.data?.data) setSubscription(subRes.data.data);
         if (invRes?.data?.data) setInvoices(invRes.data.data);
+        if (walletRes?.data?.data) setWallet(walletRes.data.data);
         
         if (searchParams.get("card_update") === "success") {
           setShowSuccessBanner(true);
+        }
+        if (searchParams.get("topup") === "success") {
+          setShowTopupBanner(true);
         }
       } catch (err) {
         console.error("Failed to load portal data", err);
@@ -59,7 +100,7 @@ function PortalDashboardContent() {
       }
     }
     loadData();
-  }, []);
+  }, [searchParams]);
 
   const formatCurrency = (amount: number, currency: string = "NGN") => {
     return new Intl.NumberFormat("en-NG", {
@@ -78,7 +119,7 @@ function PortalDashboardContent() {
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to initiate payment update. Please try again.");
+      setToast({ message: "Failed to initiate payment update. Please try again.", type: "error" });
     } finally {
       setActionLoading(false);
     }
@@ -92,9 +133,77 @@ function PortalDashboardContent() {
       setShowCancelModal(false);
     } catch (err) {
       console.error(err);
-      alert("Failed to cancel subscription.");
+      setToast({ message: "Failed to cancel subscription.", type: "error" });
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleTopupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!topupAmount || isNaN(Number(topupAmount)) || Number(topupAmount) <= 0) {
+      setTopupError("Please enter a valid amount greater than 0");
+      return;
+    }
+
+    setTopupLoading(true);
+    setTopupError("");
+    try {
+      // Amount in kobo
+      const amountKobo = Math.round(Number(topupAmount) * 100);
+      const res = await portalApi.post("/portal/wallet/topup", { amount: amountKobo });
+      if (res.data.data.checkoutLink) {
+        window.location.href = res.data.data.checkoutLink;
+      }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (err: any) {
+      console.error(err);
+      setTopupError(err.response?.data?.message || "Failed to initiate top-up");
+      setTopupLoading(false);
+    }
+  };
+
+  const handleToggleAutoTopup = async () => {
+    if (!wallet) return;
+    setSettingsLoading(true);
+    try {
+      const newStatus = !wallet.autoTopUp;
+      // If turning on, we might want to default some values if they are 0
+      const payload = { 
+        autoTopUp: newStatus,
+        ...(newStatus && wallet.autoTopUpAmount === 0 ? { autoTopUpAmount: 500000, autoTopUpTrigger: 100000 } : {})
+      };
+      const res = await portalApi.post("/portal/wallet/settings", payload);
+      setWallet(res.data.data);
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Failed to update settings.", type: "error" });
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const handleSaveAutoTopupSettings = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!wallet) return;
+    setSettingsLoading(true);
+    
+    const formData = new FormData(e.currentTarget);
+    const amount = Number(formData.get("autoTopUpAmount"));
+    const trigger = Number(formData.get("autoTopUpTrigger"));
+
+    try {
+      const res = await portalApi.post("/portal/wallet/settings", {
+        autoTopUpAmount: amount * 100, // to kobo
+        autoTopUpTrigger: trigger * 100, // to kobo
+      });
+      setWallet(res.data.data);
+      setToast({ message: "Settings saved successfully.", type: "success" });
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Failed to save settings.", type: "error" });
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -190,6 +299,21 @@ function PortalDashboardContent() {
         </div>
       )}
 
+      {showTopupBanner && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3 animate-in slide-in-from-top-4 duration-300">
+          <span className="material-symbols-outlined text-emerald-600">check_circle</span>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-emerald-950">Top-Up Successful</h3>
+            <p className="text-sm text-emerald-800 mt-0.5">
+              Your wallet has been successfully credited.
+            </p>
+          </div>
+          <button onClick={() => setShowTopupBanner(false)} className="text-emerald-500 hover:text-emerald-700 transition-colors">
+            <span className="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
+      )}
+
       {/* Hero */}
       <div className="pb-4">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
@@ -279,6 +403,118 @@ function PortalDashboardContent() {
         </div>
       </section>
 
+      {/* Wallet Balance Card (Glassmorphism & Less but Better) */}
+      {wallet && (
+        <section className="backdrop-blur-md bg-white/30 border border-white/40 shadow-sm rounded-2xl p-6 sm:p-8 relative overflow-hidden transition-all">
+          {/* Subtle color splash for the wallet */}
+          <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-full opacity-40 blur-3xl pointer-events-none"></div>
+
+          <div className="relative z-10">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
+              <div>
+                <h2 className="text-sm font-semibold text-emerald-600 tracking-wide uppercase mb-1">
+                  Credit Wallet
+                </h2>
+                <h3 className="text-[40px] leading-[1.2] font-bold text-slate-900">
+                  {formatCurrency(wallet.balance, wallet.currency)}
+                </h3>
+              </div>
+
+              <div className="text-left sm:text-right">
+                <Button
+                  variant="primary"
+                  onClick={() => setShowTopupModal(true)}
+                  className="bg-slate-900 text-white hover:bg-slate-800 border-transparent shadow-sm"
+                >
+                  Add Funds
+                </Button>
+              </div>
+            </div>
+
+            <div className="pt-6 border-t border-slate-200/50">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h4 className="text-base font-semibold text-slate-900">Auto Top-Up</h4>
+                  <p className="text-sm text-slate-500">Automatically add funds when your balance runs low.</p>
+                </div>
+                
+                {/* Toggle Switch */}
+                <button
+                  type="button"
+                  onClick={handleToggleAutoTopup}
+                  disabled={settingsLoading}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2 ${
+                    wallet.autoTopUp ? 'bg-emerald-500' : 'bg-slate-200'
+                  } ${settingsLoading ? 'opacity-50' : ''}`}
+                  role="switch"
+                  aria-checked={wallet.autoTopUp}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      wallet.autoTopUp ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Reveal Auto Top-Up Settings with animation if enabled */}
+              <div className={`grid transition-all duration-300 ease-out ${wallet.autoTopUp ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                <div className="overflow-hidden">
+                  <form onSubmit={handleSaveAutoTopupSettings} className="bg-white/50 rounded-xl p-4 border border-white/60 mt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label htmlFor="autoTopUpAmount" className="block text-sm font-medium text-slate-700">Refill Amount (NGN)</label>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₦</span>
+                          <input
+                            type="number"
+                            name="autoTopUpAmount"
+                            id="autoTopUpAmount"
+                            defaultValue={wallet.autoTopUpAmount / 100 || 5000}
+                            min={wallet.minAutoTopUpAmount ? wallet.minAutoTopUpAmount / 100 : 1000}
+                            max={wallet.maxAutoTopUpAmount ? wallet.maxAutoTopUpAmount / 100 : undefined}
+                            required
+                            className="block w-full pl-8 pr-3 py-2.5 bg-white/70 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 backdrop-blur-md transition-all shadow-sm"
+                          />
+                        </div>
+                        {wallet.minAutoTopUpAmount && (
+                          <p className="text-[11px] text-slate-500">Min: ₦{wallet.minAutoTopUpAmount / 100}</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="autoTopUpTrigger" className="block text-sm font-medium text-slate-700">Trigger Threshold (NGN)</label>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₦</span>
+                          <input
+                            type="number"
+                            name="autoTopUpTrigger"
+                            id="autoTopUpTrigger"
+                            defaultValue={wallet.autoTopUpTrigger / 100 || 1000}
+                            min={wallet.minAutoTopUpTrigger ? wallet.minAutoTopUpTrigger / 100 : 0}
+                            max={wallet.maxAutoTopUpTrigger ? wallet.maxAutoTopUpTrigger / 100 : undefined}
+                            required
+                            className="block w-full pl-8 pr-3 py-2.5 bg-white/70 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 backdrop-blur-md transition-all shadow-sm"
+                          />
+                        </div>
+                        {wallet.minAutoTopUpTrigger && (
+                          <p className="text-[11px] text-slate-500">Min: ₦{wallet.minAutoTopUpTrigger / 100}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-4 flex justify-end">
+                      <Button type="submit" variant="secondary" disabled={settingsLoading}>
+                        {settingsLoading ? "Saving..." : "Save Settings"}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Invoice History */}
       <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-100">
@@ -342,6 +578,74 @@ function PortalDashboardContent() {
         )}
       </section>
 
+      {/* Top-Up Modal with Glassmorphism */}
+      {showTopupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => !topupLoading && setShowTopupModal(false)}></div>
+          
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-6 border-b border-slate-100">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xl font-bold tracking-tight text-slate-900">Add Funds</h3>
+                <button 
+                  onClick={() => !topupLoading && setShowTopupModal(false)}
+                  className="text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <p className="text-sm text-slate-500">
+                Enter the amount you would like to add to your wallet. You will be redirected to Nomba to complete the payment.
+              </p>
+            </div>
+            
+            <form onSubmit={handleTopupSubmit}>
+              <div className="px-6 py-5">
+                <Input
+                  type="number"
+                  name="topupAmount"
+                  id="topupAmount"
+                  label={`Amount (${wallet?.currency || 'NGN'})`}
+                  placeholder="5000"
+                  value={topupAmount}
+                  onChange={(e) => setTopupAmount(e.target.value)}
+                  min="100"
+                  disabled={topupLoading}
+                  required
+                  icon="payments"
+                  className="w-full text-lg"
+                />
+                {topupError && (
+                  <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[16px]">error</span>
+                    {topupError}
+                  </p>
+                )}
+              </div>
+              
+              <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setShowTopupModal(false)}
+                  disabled={topupLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={topupLoading}
+                  className="bg-emerald-600 hover:bg-emerald-700 border-transparent shadow-sm"
+                >
+                  {topupLoading ? "Processing..." : "Continue to Payment"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Cancel Modal with Glassmorphism */}
       {showCancelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -380,6 +684,29 @@ function PortalDashboardContent() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300 ${
+          toast.type === "success" 
+            ? "bg-emerald-50 border-emerald-200 text-emerald-950" 
+            : "bg-red-50 border-red-200 text-red-950"
+        }`}>
+          <span className={`material-symbols-outlined text-[20px] ${
+            toast.type === "success" ? "text-emerald-600" : "text-red-600"
+          }`}>
+            {toast.type === "success" ? "check_circle" : "error"}
+          </span>
+          <span className="text-sm font-medium">{toast.message}</span>
+          <button 
+            onClick={() => setToast(null)}
+            className={`transition-colors flex-shrink-0 ${
+              toast.type === "success" ? "text-emerald-500 hover:text-emerald-700" : "text-red-500 hover:text-red-700"
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+          </button>
         </div>
       )}
     </div>

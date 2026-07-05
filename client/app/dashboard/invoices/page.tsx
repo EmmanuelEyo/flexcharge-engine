@@ -54,7 +54,7 @@ export default function InvoicesPage() {
       setSelectedInvoice(null);
       fetchInvoices();
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to process refund");
+      setError(err.message || "Failed to process refund");
     } finally {
       setRefundLoading(false);
     }

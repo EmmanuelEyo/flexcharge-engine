@@ -47,7 +47,7 @@ export async function sendEmail(
   const client = getResend();
 
   if (!client) {
-    logger.debug(
+    logger.warn(
       { to, subject },
       "Email skipped — RESEND_API_KEY not configured"
     );

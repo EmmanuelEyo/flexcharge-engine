@@ -16,6 +16,7 @@ import { CancelEmail } from "../emails/customer/CancelEmail.js";
 import { ManualInvoiceEmail } from "../emails/customer/ManualInvoiceEmail.js";
 import { ManualInvoiceReminderEmail } from "../emails/customer/ManualInvoiceReminderEmail.js";
 import { RefundProcessedEmail } from "../emails/customer/RefundProcessedEmail.js";
+import { PortalLinkEmail } from "../emails/customer/PortalLinkEmail.js";
 
 // Tenant templates
 import { TenantNewSubscriberEmail } from "../emails/tenant/TenantNewSubscriberEmail.js";
@@ -36,7 +37,7 @@ interface EmailJobPayload {
   /** Who receives the email: the customer or the tenant/developer. */
   recipientType: "customer" | "tenant";
   /** The type of email to send. */
-  type: "welcome" | "receipt" | "dunning" | "cancel" | "new_subscriber" | "payment_failed" | "manual_invoice" | "manual_invoice_reminder" | "withdrawal_successful" | "withdrawal_failed" | "refund_deducted" | "refund_processed";
+  type: "welcome" | "receipt" | "dunning" | "cancel" | "new_subscriber" | "payment_failed" | "manual_invoice" | "manual_invoice_reminder" | "withdrawal_successful" | "withdrawal_failed" | "refund_deducted" | "refund_processed" | "portal_link";
   /** Database IDs used to look up the records at dispatch time. */
   tenantId: string;
   customerId?: string;
@@ -46,6 +47,7 @@ interface EmailJobPayload {
   failureReason?: string;
   attemptNumber?: number;
   cancellationReason?: string;
+  portalUrl?: string;
 }
 
 /**
@@ -78,7 +80,7 @@ export function defineSendEmailJob(agenda: Agenda): void {
     const data = job.attrs.data!;
 
     if (!isEmailConfigured()) {
-      logger.debug({ type: data.type, recipientType: data.recipientType }, "Email skipped — not configured");
+      logger.warn({ type: data.type, recipientType: data.recipientType }, "Email skipped — not configured");
       return;
     }
 
@@ -135,6 +137,19 @@ export function defineSendEmailJob(agenda: Agenda): void {
               interval: plan?.interval || "month",
               tenantName: tenant.name,
               hasPaymentToken: !!subscription?.tokenKey,
+            });
+            break;
+
+          case "portal_link":
+            if (!data.portalUrl) {
+              logger.warn(data, "Email job: portal_link requires portalUrl — skipping");
+              return;
+            }
+            subject = `Your Customer Portal Access Link for ${tenant.name}`;
+            element = React.createElement(PortalLinkEmail, {
+              customerName: customer?.name || "there",
+              tenantName: tenant.name,
+              portalUrl: data.portalUrl,
             });
             break;
 

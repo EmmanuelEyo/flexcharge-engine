@@ -150,18 +150,15 @@ function SubscriberDrawer({
     }
   };
 
-  const handleGenerateLink = async () => {
+  const handleSendLink = async () => {
     try {
-      setLoadingAction("generate_link");
-      const res = await api.post(`/portal/sessions`, { customerId: subscriber.customerId });
-      if (res.data?.data?.portalUrl) {
-        navigator.clipboard.writeText(res.data.data.portalUrl).catch(() => {});
-        setCopiedLink(true);
-        setTimeout(() => setCopiedLink(false), 2000);
-      }
+      setLoadingAction("send_link");
+      await api.post(`/portal/sessions`, { customerId: subscriber.customerId });
+      setCopiedLink(true); // Using existing state variable for the toast
+      setTimeout(() => setCopiedLink(false), 3000);
     } catch (error) {
-      console.error("Failed to generate portal link:", error);
-      alert("Failed to generate portal link");
+      console.error("Failed to send portal link:", error);
+      alert("Failed to send portal link");
     } finally {
       setLoadingAction(null);
     }
@@ -279,12 +276,12 @@ function SubscriberDrawer({
           )}
 
           <button 
-            onClick={handleGenerateLink}
+            onClick={handleSendLink}
             disabled={!!loadingAction}
             className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors text-sm font-medium shadow-sm disabled:opacity-50"
           >
-            {loadingAction === 'generate_link' ? <span className="material-symbols-outlined animate-spin text-[16px] leading-none">sync</span> : <span className="material-symbols-outlined text-[16px] leading-none">link</span>}
-            Generate Portal Link
+            {loadingAction === 'send_link' ? <span className="material-symbols-outlined animate-spin text-[16px] leading-none">sync</span> : <span className="material-symbols-outlined text-[16px] leading-none">mail</span>}
+            Email Portal Link
           </button>
           <div className="flex gap-3">
             {subscriber.status === "active" ? (
@@ -325,7 +322,7 @@ function SubscriberDrawer({
           <span className="material-symbols-outlined text-[15px] leading-none text-emerald-400">
             check_circle
           </span>
-          Portal link copied to clipboard
+          Portal link emailed to customer
         </div>
       )}
     </>
