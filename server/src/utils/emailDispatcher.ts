@@ -62,7 +62,7 @@ export async function queueEmail(
       portalUrl: context.portalUrl,
     });
 
-    logger.debug(
+    logger.info(
       { recipientType, type },
       "Email job queued"
     );
