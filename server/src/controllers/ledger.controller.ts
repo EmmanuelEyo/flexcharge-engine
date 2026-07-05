@@ -142,8 +142,8 @@ export async function processRefund(req: Request, res: Response): Promise<void> 
     const tenantId = req.tenantId!;
     const { invoiceId, accountNumber, bankCode } = req.body;
 
-    if (!invoiceId || !accountNumber || !bankCode) {
-      res.status(400).json({ error: "invoiceId, accountNumber, and bankCode are required" });
+    if (!invoiceId) {
+      res.status(400).json({ error: "invoiceId is required" });
       return;
     }
 
@@ -194,12 +194,14 @@ export async function processRefund(req: Request, res: Response): Promise<void> 
       }
     }
 
+    const bankDetails = accountNumber && bankCode ? { accountNumber, bankCode } : undefined;
+
     await ledgerService.processRefund(
       tenantId!,
       invoiceId,
       invoice.nombaTransactionId,
       invoice.amount,
-      { accountNumber, bankCode }
+      bankDetails
     );
 
     // Mark invoice as refunded
