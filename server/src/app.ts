@@ -51,7 +51,6 @@ import walletRoutes from "./routes/wallet.routes.js";
 import ledgerRoutes from "./routes/ledger.routes.js";
 import analyticsRoutes from "./routes/analytics.routes.js";
 import tokenizedCardRoutes from "./routes/tokenizedCard.routes.js";
-
 /**
  * Express Application Setup
  *
@@ -147,7 +146,6 @@ app.use("/api/wallets", walletRoutes);
 app.use("/api/ledger", ledgerRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/tokenized-cards", tokenizedCardRoutes);
-
 // ===== HEALTH CHECK =====
 app.get("/health", (_req, res) => {
   res.status(200).json({
