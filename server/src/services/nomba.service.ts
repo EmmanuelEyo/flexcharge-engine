@@ -1354,7 +1354,8 @@ class NombaService {
     customerName: string;
     customerEmail: string;
     customerPhoneNumber: string;
-    customerAddress?: string;
+    customerAccountName: string;
+    customerAddress: string;
     merchantReference: string;
     startDate: string;   // ISO 8601 e.g. "2025-08-29T15:30"
     endDate: string;     // ISO 8601 e.g. "2026-08-29T15:30"
@@ -1362,9 +1363,7 @@ class NombaService {
   }): Promise<{
     mandateId: string;
     status: string;
-    validationAccountNumber?: string;
-    validationBankName?: string;
-    validationAmount?: string;
+    instructions?: string;
   }> {
     const authHeaders = await this.getAuthHeaders();
 
@@ -1374,8 +1373,8 @@ class NombaService {
         customerAccountNumber: params.customerAccountNumber,
         bankCode: params.bankCode,
         customerName: params.customerName,
-        customerAddress: params.customerAddress || "N/A",
-        customerAccountName: params.customerName,
+        customerAddress: params.customerAddress,
+        customerAccountName: params.customerAccountName,
         frequency: "VARIABLE",
         narration: params.narration || "FlexCharge subscription billing mandate",
         customerPhoneNumber: params.customerPhoneNumber,
@@ -1408,9 +1407,7 @@ class NombaService {
     return {
       mandateId: data?.mandateId || data?.id || "",
       status: data?.status || "PENDING",
-      validationAccountNumber: data?.validationAccountNumber,
-      validationBankName: data?.validationBankName,
-      validationAmount: data?.validationAmount,
+      instructions: data?.description || description || "",
     };
   }
 

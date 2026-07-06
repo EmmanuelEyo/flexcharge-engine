@@ -438,10 +438,18 @@ export async function initiateDirectDebitMandate(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { bankCode, accountNumber, phoneNumber, address } = req.body;
+    const { bankCode, accountNumber, phoneNumber, address, accountName } = req.body;
 
-    if (!bankCode || !accountNumber || !phoneNumber) {
-      throw new Error("bankCode, accountNumber, and phoneNumber are required");
+    if (!bankCode || !accountNumber || !phoneNumber || !address || !accountName) {
+      throw new Error("bankCode, accountNumber, phoneNumber, address, and accountName are required");
+    }
+
+    if (address.length < 5 || address.length > 150) {
+      throw new Error("Address must be between 5 and 150 characters");
+    }
+
+    if (accountName.length < 3 || accountName.length > 100) {
+      throw new Error("Account name must be between 3 and 100 characters");
     }
 
     const customer = await Customer.findOne({
@@ -472,9 +480,10 @@ export async function initiateDirectDebitMandate(
       customerAccountNumber: accountNumber,
       bankCode,
       customerName: customer.name || "Customer",
+      customerAccountName: accountName,
       customerEmail: customer.email,
       customerPhoneNumber: phoneNumber,
-      customerAddress: address || "N/A",
+      customerAddress: address,
       merchantReference,
       startDate: formatDate(startDate),
       endDate: formatDate(endDate),
@@ -501,9 +510,7 @@ export async function initiateDirectDebitMandate(
     sendCreated(res, {
       mandateId: result.mandateId,
       status: result.status,
-      validationAccountNumber: result.validationAccountNumber,
-      validationBankName: result.validationBankName,
-      validationAmount: result.validationAmount || "50.00",
+      instructions: result.instructions,
       message:
         "Please transfer ₦50 to the validation account from the exact bank account you registered. This validates your mandate.",
     });

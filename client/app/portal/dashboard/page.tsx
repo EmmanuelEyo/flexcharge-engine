@@ -67,9 +67,10 @@ function PortalDashboardContent() {
   const [showCancelModal, setShowCancelModal] = useState(false);
 
   // Mandate modal state
+  const [showPaymentSelectorModal, setShowPaymentSelectorModal] = useState(false);
   const [showMandateModal, setShowMandateModal] = useState(false);
   const [mandateLoading, setMandateLoading] = useState(false);
-  const [mandateForm, setMandateForm] = useState({ bankCode: "", accountNumber: "", phoneNumber: "" });
+  const [mandateForm, setMandateForm] = useState({ bankCode: "", accountNumber: "", phoneNumber: "", accountName: "", address: "" });
   const [mandatePending, setMandatePending] = useState<any>(null);
 
   
@@ -445,16 +446,6 @@ function PortalDashboardContent() {
           </div>
 
           <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
-            {subscription && !subscription.cancelAtPeriodEnd && subscription.status === 'active' && (
-              <Button
-                variant="primary"
-                onClick={handleUpdatePayment}
-                disabled={actionLoading}
-              >
-                Update Payment Method
-              </Button>
-            )}
-            
             {subscription && !subscription.cancelAtPeriodEnd && (
               <Button
                 variant="secondary"
@@ -483,14 +474,12 @@ function PortalDashboardContent() {
           <Button
             variant="secondary"
             onClick={() => {
-              setMandatePending(null);
-              setMandateForm({ bankCode: "", accountNumber: "", phoneNumber: "" });
-              setShowMandateModal(true);
+              setShowPaymentSelectorModal(true);
             }}
             className="flex items-center gap-2"
           >
             <span className="material-symbols-outlined text-[18px]">add_circle</span>
-            Add Bank Account
+            Add Payment Method
           </Button>
         </div>
 
@@ -835,6 +824,67 @@ function PortalDashboardContent() {
         </div>
       )}
 
+      {/* Payment Selector Modal */}
+      {showPaymentSelectorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => !actionLoading && setShowPaymentSelectorModal(false)}></div>
+          
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold tracking-tight text-slate-900">Add Payment Method</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Choose how you'd like to pay for your subscription.
+                </p>
+              </div>
+              <button 
+                onClick={() => !actionLoading && setShowPaymentSelectorModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="px-6 py-6 space-y-4">
+              <button
+                onClick={() => {
+                  setShowPaymentSelectorModal(false);
+                  handleUpdatePayment();
+                }}
+                disabled={actionLoading}
+                className="w-full flex items-start gap-4 p-4 border border-slate-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left disabled:opacity-50"
+              >
+                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined">credit_card</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-slate-900">Credit / Debit Card</h4>
+                  <p className="text-sm text-slate-500 mt-0.5">Link a card via secure checkout.</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowPaymentSelectorModal(false);
+                  setMandatePending(null);
+                  setMandateForm({ bankCode: "", accountNumber: "", phoneNumber: "", accountName: "", address: "" });
+                  setShowMandateModal(true);
+                }}
+                className="w-full flex items-start gap-4 p-4 border border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all text-left"
+              >
+                <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined">account_balance</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-slate-900">Bank Account (Direct Debit)</h4>
+                  <p className="text-sm text-slate-500 mt-0.5">Connect your NIBSS-supported bank account.</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mandate Setup Modal */}
       {showMandateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -868,19 +918,10 @@ function PortalDashboardContent() {
                   </p>
                 </div>
 
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-                  <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-                    <span className="text-sm text-slate-500">Bank Name</span>
-                    <span className="text-sm font-medium text-slate-900">{mandatePending.validationBankName}</span>
-                  </div>
-                  <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-                    <span className="text-sm text-slate-500">Account Number</span>
-                    <span className="text-lg font-mono font-bold text-slate-900 tracking-wider">{mandatePending.validationAccountNumber}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-500">Amount</span>
-                    <span className="text-sm font-medium text-slate-900">₦{mandatePending.validationAmount}</span>
-                  </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <p className="text-sm text-slate-800 leading-relaxed font-mono whitespace-pre-wrap">
+                    {mandatePending.instructions}
+                  </p>
                 </div>
 
                 <Button
@@ -959,6 +1000,36 @@ function PortalDashboardContent() {
                     disabled={mandateLoading}
                     required
                     icon="phone"
+                  />
+
+                  <Input
+                    type="text"
+                    name="accountName"
+                    id="accountName"
+                    label="Account Name"
+                    placeholder="e.g. John Doe"
+                    value={mandateForm.accountName}
+                    onChange={(e) => setMandateForm({ ...mandateForm, accountName: e.target.value })}
+                    disabled={mandateLoading}
+                    required
+                    minLength={3}
+                    maxLength={100}
+                    icon="person"
+                  />
+
+                  <Input
+                    type="text"
+                    name="address"
+                    id="address"
+                    label="Billing Address"
+                    placeholder="123 Example Street"
+                    value={mandateForm.address}
+                    onChange={(e) => setMandateForm({ ...mandateForm, address: e.target.value })}
+                    disabled={mandateLoading}
+                    required
+                    minLength={5}
+                    maxLength={150}
+                    icon="location_on"
                   />
                 </div>
                 
