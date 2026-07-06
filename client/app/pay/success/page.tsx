@@ -21,9 +21,14 @@ export default function CheckoutSuccessPage() {
         </div>
         
         <h1 className="text-2xl font-bold text-slate-900 mb-2">Payment Successful!</h1>
-        <p className="text-slate-500 mb-8">
+        <p className="text-slate-500 mb-4">
           Thank you for subscribing. Your account has been provisioned and your invoice has been sent to your email.
         </p>
+        
+        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-8 text-sm text-blue-800 text-left">
+          <p className="font-semibold mb-1">Paid via Bank Transfer?</p>
+          <p>If you completed your payment via bank transfer, your subscription will not auto-renew. You will receive an invoice via email next month to renew manually.</p>
+        </div>
 
         <div className="space-y-4">
           <Link 

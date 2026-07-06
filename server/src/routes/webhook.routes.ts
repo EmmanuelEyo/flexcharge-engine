@@ -16,6 +16,42 @@ import { queueEmail } from "../utils/emailDispatcher.js";
 
 const router = Router();
 
+async function saveTokenizedCardToCustomer(customerId: any, tokenizedCardData: any) {
+  if (!tokenizedCardData || !tokenizedCardData.tokenKey) return;
+  const customer = await Customer.findById(customerId);
+  if (!customer) return;
+
+  // Set root fields for backwards compatibility
+  customer.tokenKey = tokenizedCardData.tokenKey;
+  customer.cardLast4 = tokenizedCardData.cardLast4;
+  customer.cardBrand = tokenizedCardData.cardBrand;
+
+  const existingIndex = customer.paymentMethods.findIndex(
+    (pm: any) => pm.methodType === "card" && pm.tokenKey === tokenizedCardData.tokenKey
+  );
+
+  if (existingIndex === -1) {
+    customer.paymentMethods.forEach((pm: any) => pm.isDefault = false);
+    customer.paymentMethods.push({
+      methodType: "card",
+      isDefault: true,
+      tokenKey: tokenizedCardData.tokenKey,
+      cardLast4: tokenizedCardData.cardLast4,
+      cardBrand: tokenizedCardData.cardBrand,
+    } as any);
+  } else {
+    customer.paymentMethods.forEach((pm: any) => pm.isDefault = false);
+    const method = customer.paymentMethods[existingIndex];
+    if (method) {
+      method.isDefault = true;
+      method.cardLast4 = tokenizedCardData.cardLast4;
+      method.cardBrand = tokenizedCardData.cardBrand;
+    }
+  }
+
+  await customer.save();
+}
+
 /**
  * POST /webhooks/nomba
  *
@@ -218,7 +254,12 @@ router.post(
           const { creditWallet } = await import("../services/wallet.service.js");
           await creditWallet(walletId, invoice.amount, "Manual Top-Up via Portal");
 
-          logger.info({ walletId, amount: invoice.amount }, "Manual wallet top-up successful");
+          // Save card if user opted-in during manual top-up checkout
+          if (tokenizedCardData?.tokenKey) {
+            await saveTokenizedCardToCustomer(invoice.customerId, tokenizedCardData);
+          }
+
+          logger.info({ walletId, amount: invoice.amount, hasToken: !!tokenizedCardData?.tokenKey }, "Manual wallet top-up successful");
         } else if (invoice) {
           logger.info({ orderReference }, "Manual top-up invoice already paid or failed");
         } else {
@@ -264,11 +305,7 @@ router.post(
               sub.cardLast4 = tokenizedCardData.cardLast4;
               sub.cardBrand = tokenizedCardData.cardBrand;
 
-              await Customer.findByIdAndUpdate(sub.customerId, {
-                tokenKey: tokenizedCardData.tokenKey,
-                cardLast4: tokenizedCardData.cardLast4,
-                cardBrand: tokenizedCardData.cardBrand,
-              });
+              await saveTokenizedCardToCustomer(sub.customerId, tokenizedCardData);
             }
 
             (sub as any)._previousStatus = sub.status;
@@ -345,11 +382,7 @@ router.post(
         subscription.cardLast4 = tokenizedCardData.cardLast4;
         subscription.cardBrand = tokenizedCardData.cardBrand;
 
-        await Customer.findByIdAndUpdate(subscription.customerId, {
-          tokenKey: tokenizedCardData.tokenKey,
-          cardLast4: tokenizedCardData.cardLast4,
-          cardBrand: tokenizedCardData.cardBrand,
-        });
+        await saveTokenizedCardToCustomer(subscription.customerId, tokenizedCardData);
       }
 
       // Transition: pending → active
