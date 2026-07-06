@@ -18,7 +18,7 @@ api.interceptors.request.use(async (config) => {
     token = (session as any)?.accessToken;
 
     if (!token) {
-      token = sessionStorage.getItem("fc_token") ?? undefined;
+      token = localStorage.getItem("fc_token") ?? undefined;
     }
   } else {
     const { getServerSession } = await import("next-auth");

@@ -193,6 +193,40 @@ test("Nomba Service Payload Construction", async (t) => {
       restoreNombaServiceMocks();
     }
   });
+  await t.test("builds a cancel checkout order request", async () => {
+    console.log("[NOMBA][TEST] validating cancel checkout order payload");
+    nombaService.clearTokenCache();
 
+    const requests: Array<{ path: string; body: any; headers: any }> = [];
+    (nombaService as any).client = {
+      post: async (path: string, body: any, options: any) => {
+        requests.push({ path, body, headers: options.headers });
+        return {
+          data: {
+            code: "00",
+            description: "Success",
+            data: {
+              success: true,
+              message: "Order cancelled successfully",
+            },
+          },
+        };
+      },
+    };
+    (nombaService as any).getValidToken = async () => "cached-token";
+
+    try {
+      const result = await nombaService.cancelCheckoutOrder("OD-12345");
+
+      assert.strictEqual(requests.length, 1);
+      assert.strictEqual(requests[0]!.path, "/v1/checkout/order/cancel");
+      assert.strictEqual(requests[0]!.body.orderReference, "OD-12345");
+      assert.strictEqual(requests[0]!.headers.Authorization, "Bearer cached-token");
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.message, "Order cancelled successfully");
+    } finally {
+      restoreNombaServiceMocks();
+    }
+  });
 
 });
