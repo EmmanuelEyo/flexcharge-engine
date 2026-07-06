@@ -104,8 +104,8 @@ export default function RegisterPage() {
           return;
         }
         if (typeof window !== "undefined") {
-          sessionStorage.setItem("fc_token", response.data.token);
-          sessionStorage.setItem("fc_user", JSON.stringify(response.data.tenant));
+          localStorage.setItem("fc_token", response.data.token);
+          localStorage.setItem("fc_user", JSON.stringify(response.data.tenant));
         }
         router.replace("/dashboard");
       } catch (err: unknown) {
