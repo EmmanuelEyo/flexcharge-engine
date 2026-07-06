@@ -11,6 +11,7 @@ import {
   changePassword,
   forgotPassword,
   resetPassword,
+  updatePayoutSettings,
 } from "../controllers/auth.controller.js";
 import { authenticateJWT } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
@@ -23,6 +24,7 @@ import {
   changePasswordSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  updatePayoutSettingsSchema,
 } from "../validators/auth.validator.js";
 
 const router = Router();
@@ -72,5 +74,12 @@ router.patch(
   updateWebhookUrl
 );
 router.get("/webhook-secret", authenticateJWT, getWebhookSecret);
+
+router.patch(
+  "/payout-settings",
+  authenticateJWT,
+  validate(updatePayoutSettingsSchema),
+  updatePayoutSettings
+);
 
 export default router;

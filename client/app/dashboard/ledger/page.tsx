@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Button from "@/components/ui/Button";
 import api from "@/lib/api";
 import StatCard from "@/components/dashboard/StatCard";
+import Select from "@/components/ui/Select";
 
 interface LedgerBalance {
   availableBalance: number;
@@ -16,6 +17,13 @@ interface LedgerBalance {
   recentTransactions: any[];
 }
 
+interface PayoutSettings {
+  payoutSchedule: "daily" | "weekly" | "monthly";
+  payoutThreshold: number;
+  payoutDayOfWeek?: number;
+  payoutDayOfMonth?: number;
+}
+
 export default function LedgerPage() {
   const [data, setData] = useState<LedgerBalance | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,9 +34,13 @@ export default function LedgerPage() {
   const [accountNumber, setAccountNumber] = useState("");
   const [bankLoading, setBankLoading] = useState(false);
 
-  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
-  const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const [payoutSettings, setPayoutSettings] = useState<PayoutSettings>({
+    payoutSchedule: "weekly",
+    payoutThreshold: 500000,
+    payoutDayOfWeek: 1,
+    payoutDayOfMonth: 1,
+  });
+  const [settingsLoading, setSettingsLoading] = useState(false);
 
   useEffect(() => {
     fetchLedger();
@@ -39,6 +51,17 @@ export default function LedgerPage() {
       setLoading(true);
       const res = await api.get("/ledger/dashboard/balance");
       setData(res.data.data);
+
+      const profileRes = await api.get("/auth/me");
+      if (profileRes.data.data) {
+         const tenant = profileRes.data.data;
+         setPayoutSettings({
+           payoutSchedule: tenant.payoutSchedule || "weekly",
+           payoutThreshold: tenant.payoutThreshold !== undefined ? tenant.payoutThreshold : 500000,
+           payoutDayOfWeek: tenant.payoutDayOfWeek || 1,
+           payoutDayOfMonth: tenant.payoutDayOfMonth || 1,
+         });
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to load ledger data");
     } finally {
@@ -61,21 +84,17 @@ export default function LedgerPage() {
     }
   };
 
-  const handleWithdraw = async (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      setWithdrawLoading(true);
+      setSettingsLoading(true);
       setError("");
-      // amount is in kobo for backend, so multiply by 100
-      const amount = parseFloat(withdrawAmount) * 100;
-      await api.post("/ledger/dashboard/withdraw", { amount });
-      setIsWithdrawModalOpen(false);
-      setWithdrawAmount("");
+      await api.patch("/auth/payout-settings", payoutSettings);
       fetchLedger();
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to request withdrawal");
+      setError(err.response?.data?.error || "Failed to save payout settings");
     } finally {
-      setWithdrawLoading(false);
+      setSettingsLoading(false);
     }
   };
 
@@ -107,12 +126,6 @@ export default function LedgerPage() {
           <Button variant="secondary" onClick={() => setIsBankModalOpen(true)}>
             {data?.settlementAccount ? "Update Bank Account" : "Configure Bank Account"}
           </Button>
-          <Button
-            onClick={() => setIsWithdrawModalOpen(true)}
-            disabled={!data?.settlementAccount || data?.availableBalance === 0}
-          >
-            Request Payout
-          </Button>
         </div>
       </div>
 
@@ -123,7 +136,6 @@ export default function LedgerPage() {
         </div>
       )}
 
-      {/* Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <StatCard
           label="Available Balance"
@@ -137,6 +149,130 @@ export default function LedgerPage() {
           icon="payments"
           iconColor="bg-indigo-100 text-indigo-700"
         />
+      </div>
+
+      {/* Payout Schedule Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        {/* Estimator Panel */}
+        <div className="bg-gradient-to-br from-indigo-900 to-indigo-950 rounded-2xl shadow-lg border border-indigo-800 p-8 text-white relative overflow-hidden flex flex-col justify-between">
+          <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-indigo-500 rounded-full blur-3xl opacity-20"></div>
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+               <span className="material-symbols-outlined text-[28px] text-indigo-300">calendar_clock</span>
+               <h3 className="text-xl font-bold tracking-tight text-white">Upcoming Payout Estimator</h3>
+            </div>
+            
+            <div className="space-y-4">
+               <div>
+                  <p className="text-sm text-indigo-200 font-medium">Next Scheduled Payday</p>
+                  <p className="text-2xl font-semibold mt-1">
+                    {payoutSettings.payoutSchedule === "daily" ? "Every Day" : 
+                     payoutSettings.payoutSchedule === "weekly" ? `Every ${["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][payoutSettings.payoutDayOfWeek! - 1] || "Monday"}` :
+                     `Every ${payoutSettings.payoutDayOfMonth}th of the month`}
+                  </p>
+               </div>
+               
+               <div className="flex justify-between items-end pb-2 border-b border-indigo-800/50 pt-2">
+                  <div>
+                    <p className="text-sm text-indigo-200 font-medium mb-1">Transfer Threshold</p>
+                    <p className="text-lg text-indigo-100">{formatCurrency(payoutSettings.payoutThreshold)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-indigo-200 font-medium mb-1 text-right">Current Balance</p>
+                    <p className="text-xl font-bold text-emerald-400">{data ? formatCurrency(data.availableBalance) : "₦0.00"}</p>
+                  </div>
+               </div>
+               
+               <div className="pt-2">
+                 <p className="text-sm font-medium mt-2">
+                   {data && data.availableBalance >= payoutSettings.payoutThreshold ? (
+                      <span className="text-emerald-400 flex items-center gap-1.5"><span className="material-symbols-outlined text-sm">check_circle</span> Meets threshold. Will payout on next payday.</span>
+                   ) : (
+                      <span className="text-amber-400 flex items-center gap-1.5"><span className="material-symbols-outlined text-sm">warning</span> Below threshold. Will roll over until met.</span>
+                   )}
+                 </p>
+               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Configuration Panel */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+           <h3 className="text-xl font-bold tracking-tight text-slate-900 mb-6">Automated Payout Settings</h3>
+           <form onSubmit={handleSaveSettings} className="space-y-5">
+              <div>
+                 <label className="block text-sm font-medium text-slate-700 mb-2">Payout Schedule</label>
+                 <Select 
+                   value={payoutSettings.payoutSchedule}
+                   onChange={(val) => setPayoutSettings({...payoutSettings, payoutSchedule: val})}
+                   options={[
+                     { value: "daily", label: "Daily" },
+                     { value: "weekly", label: "Weekly" },
+                     { value: "monthly", label: "Monthly" }
+                   ]}
+                 />
+              </div>
+
+              {payoutSettings.payoutSchedule === "weekly" && (
+                <div>
+                   <label className="block text-sm font-medium text-slate-700 mb-2">Day of the Week</label>
+                   <Select 
+                     value={payoutSettings.payoutDayOfWeek}
+                     onChange={(val) => setPayoutSettings({...payoutSettings, payoutDayOfWeek: Number(val)})}
+                     options={[
+                       { value: 1, label: "Monday" },
+                       { value: 2, label: "Tuesday" },
+                       { value: 3, label: "Wednesday" },
+                       { value: 4, label: "Thursday" },
+                       { value: 5, label: "Friday" },
+                       { value: 6, label: "Saturday" },
+                       { value: 7, label: "Sunday" }
+                     ]}
+                   />
+                </div>
+              )}
+
+              {payoutSettings.payoutSchedule === "monthly" && (
+                <div>
+                   <label className="block text-sm font-medium text-slate-700 mb-2">Day of the Month</label>
+                   <input
+                     type="number"
+                     min="1"
+                     max="31"
+                     value={payoutSettings.payoutDayOfMonth}
+                     onChange={(e) => setPayoutSettings({...payoutSettings, payoutDayOfMonth: parseInt(e.target.value)})}
+                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all"
+                   />
+                </div>
+              )}
+
+              <div>
+                 <label className="block text-sm font-medium text-slate-700 mb-2">Minimum Payout Threshold (NGN)</label>
+                 <div className="relative">
+                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">₦</span>
+                   <input
+                     type="number"
+                     min="0"
+                     step="0.01"
+                     value={payoutSettings.payoutThreshold / 100}
+                     onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val)) {
+                           setPayoutSettings({...payoutSettings, payoutThreshold: val * 100});
+                        }
+                     }}
+                     className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all"
+                   />
+                 </div>
+              </div>
+
+              <div className="pt-2">
+                <Button type="submit" disabled={settingsLoading} className="w-full justify-center">
+                  {settingsLoading ? "Saving..." : "Save Settings"}
+                </Button>
+              </div>
+           </form>
+        </div>
       </div>
 
       {/* Bank Account Info */}
@@ -309,59 +445,6 @@ export default function LedgerPage() {
         </div>
       )}
 
-      {/* Withdraw Modal */}
-      {isWithdrawModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            onClick={() => setIsWithdrawModalOpen(false)}
-          ></div>
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-5">
-              <h3 className="text-xl font-bold text-slate-900">Request Payout</h3>
-              <button
-                onClick={() => setIsWithdrawModalOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <span className="material-symbols-outlined text-[20px]">close</span>
-              </button>
-            </div>
-
-            <form onSubmit={handleWithdraw}>
-              <div className="space-y-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Amount (NGN)</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">₦</span>
-                    <input
-                      type="number"
-                      min="100"
-                      step="0.01"
-                      value={withdrawAmount}
-                      onChange={(e) => setWithdrawAmount(e.target.value)}
-                      required
-                      placeholder="0.00"
-                      className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all"
-                    />
-                  </div>
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    Available balance: {data ? formatCurrency(data.availableBalance) : "₦0.00"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3 justify-end">
-                <Button variant="secondary" onClick={() => setIsWithdrawModalOpen(false)} type="button">
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={withdrawLoading}>
-                  {withdrawLoading ? "Processing..." : "Request Payout"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

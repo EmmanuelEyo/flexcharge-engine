@@ -11,6 +11,7 @@ import { defineWalletAutoTopupJob, WALLET_AUTO_TOPUP_JOB_NAME } from "../jobs/wa
 
 import { defineDailyAnalyticsJob, DAILY_ANALYTICS_JOB_NAME } from "../jobs/recordDailyAnalytics.js";
 import { defineCleanupPendingSubscriptionsJob, CLEANUP_PENDING_SUBS_JOB_NAME } from "../jobs/cleanupPendingSubscriptions.js";
+import { defineScheduledPayoutsJob, SCHEDULED_PAYOUTS_JOB_NAME } from "../jobs/processScheduledPayouts.js";
 
 /**
  * Agenda configuration — MongoDB-backed job scheduler.
@@ -50,6 +51,7 @@ export function getAgenda(): Agenda {
 
     defineDailyAnalyticsJob(agenda);
     defineCleanupPendingSubscriptionsJob(agenda);
+    defineScheduledPayoutsJob(agenda);
 
     // Error handling
     agenda.on("error", (err) => {
@@ -127,6 +129,9 @@ export async function startAgenda(): Promise<void> {
 
   // Cleanup abandoned pending subscriptions every hour
   await agendaInstance.every("1 hour", CLEANUP_PENDING_SUBS_JOB_NAME);
+
+  // Process scheduled platform payouts daily at midnight UTC
+  await agendaInstance.every("0 0 * * *", SCHEDULED_PAYOUTS_JOB_NAME);
 
   logger.info("Agenda scheduler started with recurring jobs");
 }
