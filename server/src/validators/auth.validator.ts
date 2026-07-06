@@ -75,3 +75,11 @@ export const resetPasswordSchema = z.object({
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+export const updatePayoutSettingsSchema = z.object({
+  payoutSchedule: z.enum(["daily", "weekly", "monthly"]),
+  payoutThreshold: z.number().min(0, "Threshold must be non-negative"),
+  payoutDayOfWeek: z.number().min(1).max(7).optional(),
+  payoutDayOfMonth: z.number().min(1).max(31).optional(),
+});
+export type UpdatePayoutSettingsInput = z.infer<typeof updatePayoutSettingsSchema>;

@@ -26,6 +26,10 @@ export interface ITenant extends Document {
     accountNumber: string;
     accountName: string;
   };
+  payoutSchedule?: "daily" | "weekly" | "monthly";
+  payoutThreshold?: number;
+  payoutDayOfWeek?: number;
+  payoutDayOfMonth?: number;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
   createdAt: Date;
@@ -70,6 +74,10 @@ const tenantSchema = new Schema<ITenant>(
       accountNumber: { type: String, trim: true },
       accountName: { type: String, trim: true },
     },
+    payoutSchedule: { type: String, enum: ["daily", "weekly", "monthly"], default: "weekly" },
+    payoutThreshold: { type: Number, default: 500000 },
+    payoutDayOfWeek: { type: Number, min: 1, max: 7, default: 1 },
+    payoutDayOfMonth: { type: Number, min: 1, max: 31, default: 1 },
     resetPasswordToken: {
       type: String,
     },

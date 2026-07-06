@@ -202,20 +202,61 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
 
   // === AUTO RENEWAL FLOW ===
   try {
-    // Charge the tokenized card via Nomba
-    const chargeResult = await nombaService.chargeTokenizedCard({
-      tokenKey: subscription.tokenKey,
-      orderReference,
-      amount: plan.amount,
-      currency: plan.currency || "NGN",
-      customerEmail: customer.email,
-      customerId: customer._id.toString(),
-      // Server-side recurring charge — callbackUrl is required by Nomba but
-      // has no functional effect for tokenized server-side charges.
-      callbackUrl: `${env.FRONTEND_URL}/billing/complete?ref=${orderReference}`,
-    });
+    let chargeSuccess = false;
+    let chargeMessage = "";
 
-    if (chargeResult.success) {
+    if (subscription.automaticMethod === "direct_debit") {
+      // === DIRECT DEBIT CHARGE ===
+      // Look up the customer's default direct debit mandate
+      const defaultMandate = customer.paymentMethods?.find(
+        (pm: any) => pm.methodType === "direct_debit" && pm.isDefault && pm.mandateStatus === "ACTIVE"
+      );
+
+      if (!defaultMandate?.mandateId) {
+        // No usable mandate — fall back to manual billing for this cycle
+        logger.warn(
+          { subscriptionId: subscription._id },
+          "No active default direct debit mandate found — falling back to manual renewal"
+        );
+        return await handleChargeFailed(
+          subscription,
+          invoice,
+          undefined,
+          "No active direct debit mandate on file"
+        );
+      }
+
+      const debitResult = await nombaService.debitMandate(
+        defaultMandate.mandateId,
+        plan.amount
+      );
+      chargeSuccess = debitResult.success;
+      chargeMessage = debitResult.message;
+    } else {
+      // === CARD CHARGE (existing flow) ===
+      if (!subscription.tokenKey) {
+        return await handleChargeFailed(
+          subscription,
+          invoice,
+          undefined,
+          "No card token on file for automatic card renewal"
+        );
+      }
+
+      const cardResult = await nombaService.chargeTokenizedCard({
+        tokenKey: subscription.tokenKey,
+        orderReference,
+        amount: plan.amount,
+        currency: plan.currency || "NGN",
+        customerEmail: customer.email,
+        customerId: customer._id.toString(),
+        callbackUrl: `${env.FRONTEND_URL}/billing/complete?ref=${orderReference}`,
+      });
+      chargeSuccess = cardResult.success;
+      chargeMessage = cardResult.message;
+    }
+
+    if (chargeSuccess) {
       // === PAYMENT SUCCESS ===
       invoice.status = "paid";
       invoice.paidAt = new Date();
@@ -280,7 +321,7 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
         subscription,
         invoice,
         undefined,
-        chargeResult.message || "Tokenized card charge declined"
+        chargeMessage || "Payment charge declined"
       );
     }
   } catch (error) {

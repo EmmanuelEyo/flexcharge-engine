@@ -15,6 +15,7 @@ export default function PlansPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
 
   const fetchPlans = useCallback(async () => {
     try {
@@ -32,7 +33,7 @@ export default function PlansPage() {
         amount: p.amount / 100,
         interval: p.interval,
         description: p.description ?? "",
-        subscribers: 0, // subscriber count loaded separately if needed
+        subscribers: p.subscribers ?? 0,
         status: p.isActive ? "active" : "inactive",
         createdAt: new Date(p.createdAt).toLocaleDateString("en-US", {
           month: "short",
@@ -56,24 +57,31 @@ export default function PlansPage() {
     fetchPlans();
   }, [fetchPlans]);
 
-  const handleCreatePlan = async (data: PlanFormData) => {
+  const handleSavePlan = async (data: PlanFormData) => {
     setCreating(true);
     try {
       // Backend expects amount in kobo (integer)
       const amountInKobo = Math.round(parseFloat(data.amount) * 100);
 
-      await api.post("/plans", {
+      const payload = {
         name: data.name,
         currency: data.currency,
         amount: amountInKobo,
         interval: data.interval,
         description: data.description || undefined,
-      });
+      };
+
+      if (editingPlan) {
+        await api.patch(`/plans/${editingPlan.id}`, payload);
+      } else {
+        await api.post("/plans", payload);
+      }
 
       setModalOpen(false);
+      setEditingPlan(null);
       await fetchPlans(); // refresh list with real _id from DB
     } catch (err: any) {
-      alert(err.message ?? "Failed to create plan");
+      alert(err.message ?? `Failed to ${editingPlan ? "update" : "create"} plan`);
     } finally {
       setCreating(false);
     }
@@ -132,7 +140,7 @@ export default function PlansPage() {
             Create your first billing plan to start accepting recurring payments
             from your subscribers.
           </p>
-          <Button variant="primary" icon="add" size="lg" onClick={() => setModalOpen(true)}>
+          <Button variant="primary" icon="add" size="lg" onClick={() => { setEditingPlan(null); setModalOpen(true); }}>
             Create Your First Plan
           </Button>
         </div>
@@ -150,7 +158,7 @@ export default function PlansPage() {
                 your billing offerings
               </p>
             </div>
-            <Button variant="primary" icon="add" onClick={() => setModalOpen(true)}>
+            <Button variant="primary" icon="add" onClick={() => { setEditingPlan(null); setModalOpen(true); }}>
               New Plan
             </Button>
           </div>
@@ -216,11 +224,15 @@ export default function PlansPage() {
                   plan={plan}
                   onToggleStatus={handleToggleStatus}
                   onCopyId={handleCopyId}
+                  onEdit={(p) => {
+                    setEditingPlan(p);
+                    setModalOpen(true);
+                  }}
                 />
               ))}
 
               <button
-                onClick={() => setModalOpen(true)}
+                onClick={() => { setEditingPlan(null); setModalOpen(true); }}
                 className="rounded-xl border-2 border-dashed border-slate-200 hover:border-[#4F46E5] hover:bg-indigo-50/30 transition-all duration-200 flex flex-col items-center justify-center gap-3 p-8 text-slate-400 hover:text-[#4F46E5] min-h-[200px] group"
               >
                 <div className="w-12 h-12 rounded-xl bg-slate-100 group-hover:bg-indigo-100 flex items-center justify-center transition-colors">
@@ -278,9 +290,21 @@ export default function PlansPage() {
 
       <CreatePlanModal
         open={modalOpen}
-        onClose={() => { if (hasPlans) setModalOpen(false); }}
-        onSubmit={handleCreatePlan}
+        onClose={() => { 
+          if (hasPlans) {
+            setModalOpen(false);
+            setEditingPlan(null);
+          }
+        }}
+        onSubmit={handleSavePlan}
         isSubmitting={creating}
+        initialData={editingPlan ? {
+          name: editingPlan.name,
+          currency: editingPlan.currency,
+          amount: editingPlan.amount.toString(),
+          interval: editingPlan.interval,
+          description: editingPlan.description || "",
+        } : null}
       />
     </>
   );

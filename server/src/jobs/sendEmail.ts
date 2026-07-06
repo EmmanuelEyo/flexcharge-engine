@@ -7,6 +7,7 @@ import { Subscription } from "../models/Subscription.js";
 import { Invoice } from "../models/Invoice.js";
 import { sendEmail, isEmailConfigured } from "../services/email.service.js";
 import { logger } from "../utils/logger.js";
+import { env } from "../config/environment.js";
 
 // Customer templates
 import { WelcomeEmail } from "../emails/customer/WelcomeEmail.js";
@@ -199,6 +200,7 @@ export async function processEmailPayload(data: EmailJobPayload): Promise<void> 
               amount: formatKobo(invoice?.amount || plan?.amount || 0, plan?.currency),
               tenantName: tenant.name,
               checkoutLink: invoice?.checkoutLink || "",
+              portalLink: `${env.FRONTEND_URL}/portal`,
             });
             break;
 
@@ -210,6 +212,7 @@ export async function processEmailPayload(data: EmailJobPayload): Promise<void> 
               amount: formatKobo(invoice?.amount || plan?.amount || 0, plan?.currency),
               tenantName: tenant.name,
               checkoutLink: invoice?.checkoutLink || "",
+              portalLink: `${env.FRONTEND_URL}/portal`,
             });
             break;
 
