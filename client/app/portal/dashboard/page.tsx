@@ -4,6 +4,7 @@ import React, { useEffect, useState, Suspense } from "react";
 import portalApi from "@/lib/portalApi";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import Select from "@/components/ui/Select";
 import { useSearchParams } from "next/navigation";
 import { usePortal } from "@/context/PortalContext";
 
@@ -50,6 +51,26 @@ interface PaymentMethod {
   mandateId?: string;
   mandateStatus?: string;
 }
+
+const bankOptions = [
+  { value: "044", label: "Access Bank" },
+  { value: "058", label: "Guaranty Trust Bank (GTB)" },
+  { value: "033", label: "United Bank for Africa (UBA)" },
+  { value: "057", label: "Zenith Bank" },
+  { value: "011", label: "First Bank of Nigeria" },
+  { value: "232", label: "Sterling Bank" },
+  { value: "032", label: "Union Bank" },
+  { value: "215", label: "Unity Bank" },
+  { value: "035", label: "Wema Bank" },
+  { value: "050", label: "Ecobank" },
+  { value: "070", label: "Fidelity Bank" },
+  { value: "214", label: "First City Monument Bank (FCMB)" },
+  { value: "076", label: "Polaris Bank" },
+  { value: "082", label: "Keystone Bank" },
+  { value: "221", label: "Stanbic IBTC Bank" },
+  { value: "068", label: "Standard Chartered Bank" },
+  { value: "030", label: "Heritage Bank" },
+];
 
 function PortalDashboardContent() {
   const searchParams = useSearchParams();
@@ -970,39 +991,13 @@ function PortalDashboardContent() {
                       </div>
                     ) : (
                       <div>
-                        <div className="relative">
-                          <select
-                            id="bankCode"
-                            required
-                            disabled={mandateLoading}
-                            value={mandateForm.bankCode}
-                            onChange={(e) => setMandateForm({ ...mandateForm, bankCode: e.target.value })}
-                            className="block w-full pl-3 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none"
-                          >
-                            <option value="" disabled>Select your bank</option>
-                            <option value="044">Access Bank</option>
-                            <option value="058">Guaranty Trust Bank (GTB)</option>
-                            <option value="033">United Bank for Africa (UBA)</option>
-                            <option value="057">Zenith Bank</option>
-                            <option value="011">First Bank of Nigeria</option>
-                            <option value="232">Sterling Bank</option>
-                            <option value="032">Union Bank</option>
-                            <option value="215">Unity Bank</option>
-                            <option value="035">Wema Bank</option>
-                            <option value="050">Ecobank</option>
-                            <option value="070">Fidelity Bank</option>
-                            <option value="214">First City Monument Bank (FCMB)</option>
-                            <option value="076">Polaris Bank</option>
-                            <option value="082">Keystone Bank</option>
-                            <option value="221">Stanbic IBTC Bank</option>
-                            <option value="068">Standard Chartered Bank</option>
-                            <option value="215">Unity Bank</option>
-                            <option value="030">Heritage Bank</option>
-                          </select>
-                          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                            <span className="material-symbols-outlined text-slate-400">expand_more</span>
-                          </div>
-                        </div>
+                        <Select
+                          options={bankOptions}
+                          value={mandateForm.bankCode}
+                          onChange={(val) => setMandateForm({ ...mandateForm, bankCode: val })}
+                          disabled={mandateLoading}
+                          placeholder="Select your bank"
+                        />
                         <button
                           type="button"
                           onClick={() => {
