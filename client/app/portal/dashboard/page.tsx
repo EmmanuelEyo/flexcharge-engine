@@ -42,6 +42,15 @@ interface Wallet {
   };
 }
 
+interface PaymentMethod {
+  methodType: string;
+  isDefault: boolean;
+  bankCode?: string;
+  accountNumberMasked?: string;
+  mandateId?: string;
+  mandateStatus?: string;
+}
+
 function PortalDashboardContent() {
   const searchParams = useSearchParams();
   const { customer, loading: customerLoading } = usePortal();
@@ -50,11 +59,20 @@ function PortalDashboardContent() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
   const [showTopupBanner, setShowTopupBanner] = useState(false);
   
   const [actionLoading, setActionLoading] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+
+  // Mandate modal state
+  const [showPaymentSelectorModal, setShowPaymentSelectorModal] = useState(false);
+  const [showMandateModal, setShowMandateModal] = useState(false);
+  const [mandateLoading, setMandateLoading] = useState(false);
+  const [mandateForm, setMandateForm] = useState({ bankCode: "", accountNumber: "", phoneNumber: "", accountName: "", address: "" });
+  const [mandatePending, setMandatePending] = useState<any>(null);
+
   
   // Wallet modals state
   const [showTopupModal, setShowTopupModal] = useState(false);
@@ -79,15 +97,17 @@ function PortalDashboardContent() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [subRes, invRes, walletRes] = await Promise.all([
+        const [subRes, invRes, walletRes, pmRes] = await Promise.all([
           portalApi.get("/portal/subscription").catch(() => null),
           portalApi.get("/portal/invoices").catch(() => null),
           portalApi.get("/portal/wallet").catch(() => null),
+          portalApi.get("/portal/payment-methods").catch(() => null),
         ]);
 
         if (subRes?.data?.data) setSubscription(subRes.data.data);
         if (invRes?.data?.data) setInvoices(invRes.data.data);
         if (walletRes?.data?.data) setWallet(walletRes.data.data);
+        if (pmRes?.data?.data?.paymentMethods) setPaymentMethods(pmRes.data.data.paymentMethods);
         
         if (searchParams.get("card_update") === "success") {
           setShowSuccessBanner(true);
@@ -124,6 +144,51 @@ function PortalDashboardContent() {
       setToast({ message: "Failed to initiate payment update. Please try again.", type: "error" });
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleInitiateMandate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMandateLoading(true);
+    try {
+      const res = await portalApi.post("/portal/payment-methods/mandate/initiate", mandateForm);
+      setMandatePending(res.data.data);
+      // Refresh payment methods
+      const pmRes = await portalApi.get("/portal/payment-methods");
+      setPaymentMethods(pmRes.data.data.paymentMethods);
+      setToast({ message: "Mandate initiated. Please follow validation instructions.", type: "success" });
+    } catch (err: any) {
+      console.error(err);
+      setToast({ message: err.response?.data?.message || "Failed to initiate mandate.", type: "error" });
+    } finally {
+      setMandateLoading(false);
+    }
+  };
+
+  const handleVerifyMandate = async (mandateId: string) => {
+    setMandateLoading(true);
+    try {
+      const res = await portalApi.post("/portal/payment-methods/mandate/verify", { mandateId, setAsDefault: true });
+      if (res.data.data.isUsable) {
+        setToast({ message: "Mandate verified and activated!", type: "success" });
+        setMandatePending(null);
+        setShowMandateModal(false);
+      } else {
+        setToast({ message: res.data.data.message || "Mandate not yet active.", type: "error" });
+      }
+      
+      // Refresh payment methods and subscription
+      const [pmRes, subRes] = await Promise.all([
+        portalApi.get("/portal/payment-methods"),
+        portalApi.get("/portal/subscription")
+      ]);
+      setPaymentMethods(pmRes.data.data.paymentMethods);
+      setSubscription(subRes.data.data);
+    } catch (err: any) {
+      console.error(err);
+      setToast({ message: err.response?.data?.message || "Failed to verify mandate.", type: "error" });
+    } finally {
+      setMandateLoading(false);
     }
   };
 
@@ -381,16 +446,6 @@ function PortalDashboardContent() {
           </div>
 
           <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
-            {subscription && !subscription.cancelAtPeriodEnd && subscription.status === 'active' && (
-              <Button
-                variant="primary"
-                onClick={handleUpdatePayment}
-                disabled={actionLoading}
-              >
-                Update Payment Method
-              </Button>
-            )}
-            
             {subscription && !subscription.cancelAtPeriodEnd && (
               <Button
                 variant="secondary"
@@ -403,6 +458,86 @@ function PortalDashboardContent() {
             )}
           </div>
         </div>
+      </section>
+
+      {/* Payment Methods Card */}
+      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 relative overflow-hidden z-0">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6 border-b border-slate-100 pb-4">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">
+              Payment Methods
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              Manage your cards and bank accounts for automatic billing.
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowPaymentSelectorModal(true);
+            }}
+            className="flex items-center gap-2"
+          >
+            <span className="material-symbols-outlined text-[18px]">add_circle</span>
+            Add Payment Method
+          </Button>
+        </div>
+
+        {paymentMethods.length === 0 ? (
+          <div className="text-center py-6 text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            No saved payment methods.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {paymentMethods.map((pm, index) => (
+              <div key={index} className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                    pm.methodType === "card" ? "bg-indigo-100 text-indigo-600" : "bg-emerald-100 text-emerald-600"
+                  }`}>
+                    <span className="material-symbols-outlined">
+                      {pm.methodType === "card" ? "credit_card" : "account_balance"}
+                    </span>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+                      {pm.methodType === "card" ? "Credit Card" : "Direct Debit"}
+                      {pm.isDefault && (
+                        <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                          Default
+                        </span>
+                      )}
+                    </h4>
+                    <p className="text-sm text-slate-500 font-medium">
+                      {pm.methodType === "card" 
+                        ? `•••• ${pm.accountNumberMasked || "****"}`
+                        : `${pm.bankCode} •••• ${pm.accountNumberMasked?.slice(-4) || "****"}`
+                      }
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {pm.mandateStatus && pm.mandateStatus !== "ACTIVE" && (
+                    <span className="text-xs font-medium bg-amber-50 text-amber-700 px-2.5 py-1 rounded-md border border-amber-200 uppercase flex items-center gap-1">
+                      {pm.mandateStatus}
+                    </span>
+                  )}
+                  {pm.methodType === "direct_debit" && pm.mandateStatus !== "ACTIVE" && (
+                    <Button 
+                      variant="primary" 
+                      onClick={() => handleVerifyMandate(pm.mandateId!)}
+                      disabled={mandateLoading}
+                      className="text-xs py-1.5 px-3"
+                    >
+                      {mandateLoading ? "Verifying..." : "Verify Status"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Wallet Balance Card (Glassmorphism & Less but Better) */}
@@ -685,6 +820,238 @@ function PortalDashboardContent() {
                 Yes, Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Selector Modal */}
+      {showPaymentSelectorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => !actionLoading && setShowPaymentSelectorModal(false)}></div>
+          
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold tracking-tight text-slate-900">Add Payment Method</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Choose how you'd like to pay for your subscription.
+                </p>
+              </div>
+              <button 
+                onClick={() => !actionLoading && setShowPaymentSelectorModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="px-6 py-6 space-y-4">
+              <button
+                onClick={() => {
+                  setShowPaymentSelectorModal(false);
+                  handleUpdatePayment();
+                }}
+                disabled={actionLoading}
+                className="w-full flex items-start gap-4 p-4 border border-slate-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left disabled:opacity-50"
+              >
+                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined">credit_card</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-slate-900">Credit / Debit Card</h4>
+                  <p className="text-sm text-slate-500 mt-0.5">Link a card via secure checkout.</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowPaymentSelectorModal(false);
+                  setMandatePending(null);
+                  setMandateForm({ bankCode: "", accountNumber: "", phoneNumber: "", accountName: "", address: "" });
+                  setShowMandateModal(true);
+                }}
+                className="w-full flex items-start gap-4 p-4 border border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all text-left"
+              >
+                <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined">account_balance</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-slate-900">Bank Account (Direct Debit)</h4>
+                  <p className="text-sm text-slate-500 mt-0.5">Connect your NIBSS-supported bank account.</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mandate Setup Modal */}
+      {showMandateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => !mandateLoading && setShowMandateModal(false)}></div>
+          
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md relative z-10 overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-6 border-b border-slate-100 flex items-start justify-between">
+              <div>
+                <h3 className="text-xl font-bold tracking-tight text-slate-900">Setup Direct Debit</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Connect your bank account for automatic billing.
+                </p>
+              </div>
+              <button 
+                onClick={() => !mandateLoading && setShowMandateModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            {mandatePending ? (
+              <div className="px-6 py-6 space-y-4">
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <h4 className="text-sm font-bold text-amber-900 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px]">info</span>
+                    Validation Required
+                  </h4>
+                  <p className="text-sm text-amber-800 mt-2">
+                    {mandatePending.message}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <p className="text-sm text-slate-800 leading-relaxed font-mono whitespace-pre-wrap">
+                    {mandatePending.instructions}
+                  </p>
+                </div>
+
+                <Button
+                  variant="primary"
+                  className="w-full mt-4"
+                  onClick={() => setShowMandateModal(false)}
+                >
+                  I'll do this later
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={handleInitiateMandate}>
+                <div className="px-6 py-5 space-y-4">
+                  <div>
+                    <label htmlFor="bankCode" className="block text-sm font-medium text-slate-700 mb-1">
+                      Bank
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="bankCode"
+                        required
+                        disabled={mandateLoading}
+                        value={mandateForm.bankCode}
+                        onChange={(e) => setMandateForm({ ...mandateForm, bankCode: e.target.value })}
+                        className="block w-full pl-3 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none"
+                      >
+                        <option value="" disabled>Select your bank</option>
+                        <option value="044">Access Bank</option>
+                        <option value="058">Guaranty Trust Bank (GTB)</option>
+                        <option value="033">United Bank for Africa (UBA)</option>
+                        <option value="057">Zenith Bank</option>
+                        <option value="011">First Bank of Nigeria</option>
+                        <option value="232">Sterling Bank</option>
+                        <option value="032">Union Bank</option>
+                        <option value="215">Unity Bank</option>
+                        <option value="035">Wema Bank</option>
+                        <option value="050">Ecobank</option>
+                        <option value="070">Fidelity Bank</option>
+                        <option value="214">First City Monument Bank (FCMB)</option>
+                        <option value="076">Polaris Bank</option>
+                        <option value="082">Keystone Bank</option>
+                        <option value="221">Stanbic IBTC Bank</option>
+                        <option value="068">Standard Chartered Bank</option>
+                        <option value="215">Unity Bank</option>
+                        <option value="030">Heritage Bank</option>
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                        <span className="material-symbols-outlined text-slate-400">expand_more</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Input
+                    type="text"
+                    name="accountNumber"
+                    id="accountNumber"
+                    label="Account Number (NUBAN)"
+                    placeholder="0123456789"
+                    value={mandateForm.accountNumber}
+                    onChange={(e) => setMandateForm({ ...mandateForm, accountNumber: e.target.value })}
+                    disabled={mandateLoading}
+                    required
+                    pattern="\d{10}"
+                    title="Must be a 10-digit account number"
+                    icon="account_balance"
+                  />
+
+                  <Input
+                    type="tel"
+                    name="phoneNumber"
+                    id="phoneNumber"
+                    label="Phone Number"
+                    placeholder="08012345678"
+                    value={mandateForm.phoneNumber}
+                    onChange={(e) => setMandateForm({ ...mandateForm, phoneNumber: e.target.value })}
+                    disabled={mandateLoading}
+                    required
+                    icon="phone"
+                  />
+
+                  <Input
+                    type="text"
+                    name="accountName"
+                    id="accountName"
+                    label="Account Name"
+                    placeholder="e.g. John Doe"
+                    value={mandateForm.accountName}
+                    onChange={(e) => setMandateForm({ ...mandateForm, accountName: e.target.value })}
+                    disabled={mandateLoading}
+                    required
+                    minLength={3}
+                    maxLength={100}
+                    icon="person"
+                  />
+
+                  <Input
+                    type="text"
+                    name="address"
+                    id="address"
+                    label="Billing Address"
+                    placeholder="123 Example Street"
+                    value={mandateForm.address}
+                    onChange={(e) => setMandateForm({ ...mandateForm, address: e.target.value })}
+                    disabled={mandateLoading}
+                    required
+                    minLength={5}
+                    maxLength={150}
+                    icon="location_on"
+                  />
+                </div>
+                
+                <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 border-t border-slate-100">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setShowMandateModal(false)}
+                    disabled={mandateLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={mandateLoading}
+                  >
+                    {mandateLoading ? "Setting up..." : "Continue"}
+                  </Button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

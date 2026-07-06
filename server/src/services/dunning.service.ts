@@ -235,17 +235,67 @@ export async function processDunningRetry(
     // === AUTO RENEWAL DUNNING ===
     const orderReference = `retry_${invoice._id}_${attempt.attemptNumber}`;
 
-    const chargeResult = await nombaService.chargeTokenizedCard({
-      tokenKey: subscription.tokenKey!,
-      orderReference,
-      amount: plan.amount,
-      currency: plan.currency as "NGN" | "CDF" | "USD" | undefined,
-      customerEmail: customer.email,
-      customerId: customer._id.toString(),
-      callbackUrl: `${env.FRONTEND_URL}/billing/dunning?ref=${orderReference}`,
-    });
+    let chargeSuccess = false;
+    let chargeMessage = "";
 
-    if (chargeResult.success) {
+    if (subscription.automaticMethod === "direct_debit") {
+      // === DIRECT DEBIT DUNNING RETRY ===
+      const defaultMandate = customer.paymentMethods?.find(
+        (pm: any) => pm.methodType === "direct_debit" && pm.isDefault && pm.mandateStatus === "ACTIVE"
+      );
+
+      if (!defaultMandate?.mandateId) {
+        // Mandate revoked/deleted — treat as hard decline, switch to manual
+        attempt.status = "failed";
+        attempt.failureReason = "Direct debit mandate revoked or not found";
+        attempt.declineType = "hard";
+        attempt.nextRetryAt = undefined;
+        await attempt.save();
+
+        // Transition subscription to manual billing
+        subscription.renewalMode = "manual";
+        subscription.dunningAttemptCount = attempt.attemptNumber;
+        subscription.lastDunningAt = new Date();
+        await subscription.save();
+
+        // Send email to customer to update their billing method
+        await queueEmail("customer", "manual_invoice", {
+          tenantId: subscription.tenantId,
+          customerId: customer._id,
+          subscriptionId: subscription._id,
+          invoiceId: invoice._id,
+        });
+
+        logger.warn(
+          { subscriptionId: subscription._id },
+          "Direct debit mandate invalid — subscription switched to manual billing"
+        );
+
+        return { success: false, error: "Direct debit mandate revoked — switched to manual" };
+      }
+
+      const debitResult = await nombaService.debitMandate(
+        defaultMandate.mandateId,
+        plan.amount
+      );
+      chargeSuccess = debitResult.success;
+      chargeMessage = debitResult.message;
+    } else {
+      // === CARD DUNNING RETRY (existing flow) ===
+      const cardResult = await nombaService.chargeTokenizedCard({
+        tokenKey: subscription.tokenKey!,
+        orderReference,
+        amount: plan.amount,
+        currency: plan.currency as "NGN" | "CDF" | "USD" | undefined,
+        customerEmail: customer.email,
+        customerId: customer._id.toString(),
+        callbackUrl: `${env.FRONTEND_URL}/billing/dunning?ref=${orderReference}`,
+      });
+      chargeSuccess = cardResult.success;
+      chargeMessage = cardResult.message;
+    }
+
+    if (chargeSuccess) {
       // === DUNNING SUCCESS ===
       attempt.status = "succeeded";
       await attempt.save();
@@ -301,13 +351,13 @@ export async function processDunningRetry(
     } else {
       // === DUNNING FAILED ===
       // Nomba tokenized card endpoint doesn't return a granular decline code
-      const declineCode: string | undefined = (chargeResult as any).declineCode;
+      const declineCode: string | undefined = undefined;
       const classification = declineCode
         ? classifyDeclineCode(declineCode)
         : null;
 
       attempt.status = "failed";
-      attempt.failureReason = chargeResult.message || "Payment declined";
+      attempt.failureReason = chargeMessage || "Payment declined";
       attempt.declineCode = declineCode;
       attempt.declineCategory = classification?.category;
       attempt.declineType = classification?.type;
@@ -372,7 +422,7 @@ export async function processDunningRetry(
 
       return {
         success: false,
-        error: chargeResult.message || "Payment declined",
+        error: chargeMessage || "Payment declined",
       };
     }
   } catch (error) {
