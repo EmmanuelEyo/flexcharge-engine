@@ -7,6 +7,7 @@ import CreatePlanModal, {
   PlanFormData,
 } from "@/components/dashboard/CreatePlanModal";
 import api from "@/lib/api";
+import toast from "react-hot-toast";
 
 export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -29,9 +30,9 @@ export default function PlansPage() {
         id: p._id,
         name: p.name,
         currency: p.currency ?? "NGN",
-        // Backend stores amount in kobo — convert to naira for display
         amount: p.amount / 100,
         interval: p.interval,
+        intervalDays: p.intervalDays,
         description: p.description ?? "",
         subscribers: p.subscribers ?? 0,
         status: p.isActive ? "active" : "inactive",
@@ -41,6 +42,7 @@ export default function PlansPage() {
           year: "numeric",
         }),
         slug: p.slug,
+        allowMultipleSubscriptions: p.allowMultipleSubscriptions ?? true,
       }));
 
       setPlans(mapped);
@@ -63,13 +65,18 @@ export default function PlansPage() {
       // Backend expects amount in kobo (integer)
       const amountInKobo = Math.round(parseFloat(data.amount) * 100);
 
-      const payload = {
+      const payload: any = {
         name: data.name,
         currency: data.currency,
         amount: amountInKobo,
         interval: data.interval,
         description: data.description || undefined,
+        allowMultipleSubscriptions: data.allowMultipleSubscriptions,
       };
+
+      if (data.interval === "custom" && data.intervalDays) {
+        payload.intervalDays = data.intervalDays;
+      }
 
       if (editingPlan) {
         await api.patch(`/plans/${editingPlan.id}`, payload);
@@ -80,8 +87,9 @@ export default function PlansPage() {
       setModalOpen(false);
       setEditingPlan(null);
       await fetchPlans(); // refresh list with real _id from DB
+      toast.success(editingPlan ? "Plan updated successfully!" : "Plan created successfully!");
     } catch (err: any) {
-      alert(err.message ?? `Failed to ${editingPlan ? "update" : "create"} plan`);
+      toast.error(err.message ?? `Failed to ${editingPlan ? "update" : "create"} plan`);
     } finally {
       setCreating(false);
     }
@@ -93,8 +101,9 @@ export default function PlansPage() {
         isActive: plan.status !== "active",
       });
       await fetchPlans();
+      toast.success("Plan status updated successfully!");
     } catch (err: any) {
-      alert(err.message ?? "Failed to update plan");
+      toast.error(err.message ?? "Failed to update plan");
     }
   };
 
@@ -303,7 +312,9 @@ export default function PlansPage() {
           currency: editingPlan.currency,
           amount: editingPlan.amount.toString(),
           interval: editingPlan.interval,
+          intervalDays: editingPlan.intervalDays,
           description: editingPlan.description || "",
+          allowMultipleSubscriptions: editingPlan.allowMultipleSubscriptions,
         } : null}
       />
     </>

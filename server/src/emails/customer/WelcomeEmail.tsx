@@ -18,6 +18,7 @@ interface WelcomeEmailProps {
   interval: string;
   tenantName: string;
   hasPaymentToken?: boolean;
+  portalUrl?: string;
 }
 
 /**
@@ -31,6 +32,7 @@ export function WelcomeEmail({
   interval,
   tenantName,
   hasPaymentToken,
+  portalUrl,
 }: WelcomeEmailProps) {
   return (
     <Html lang="en">
@@ -71,6 +73,26 @@ export function WelcomeEmail({
                 Future renewals will require manual payment. You will receive an invoice
                 email with a payment link before each billing cycle.
               </Text>
+            )}
+
+            {portalUrl && (
+              <Section style={{ marginTop: "24px", marginBottom: "8px", textAlign: "center" }}>
+                <a
+                  href={portalUrl}
+                  style={{
+                    backgroundColor: "#4F46E5",
+                    borderRadius: "6px",
+                    color: "#ffffff",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    padding: "10px 20px",
+                    display: "inline-block",
+                  }}
+                >
+                  Manage Your Subscription
+                </a>
+              </Section>
             )}
           </Section>
 

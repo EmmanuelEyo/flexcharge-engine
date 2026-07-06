@@ -18,6 +18,10 @@ import { ManualInvoiceEmail } from "../emails/customer/ManualInvoiceEmail.js";
 import { ManualInvoiceReminderEmail } from "../emails/customer/ManualInvoiceReminderEmail.js";
 import { RefundProcessedEmail } from "../emails/customer/RefundProcessedEmail.js";
 import { PortalLinkEmail } from "../emails/customer/PortalLinkEmail.js";
+import { PlanChangedEmail } from "../emails/customer/PlanChangedEmail.js";
+import { WalletToppedUpEmail } from "../emails/customer/WalletToppedUpEmail.js";
+import { SubscriptionPausedEmail } from "../emails/customer/SubscriptionPausedEmail.js";
+import { SubscriptionResumedEmail } from "../emails/customer/SubscriptionResumedEmail.js";
 
 // Tenant templates
 import { TenantNewSubscriberEmail } from "../emails/tenant/TenantNewSubscriberEmail.js";
@@ -26,6 +30,10 @@ import { TenantCancelEmail } from "../emails/tenant/TenantCancelEmail.js";
 import { WithdrawalSuccessfulEmail } from "../emails/tenant/WithdrawalSuccessfulEmail.js";
 import { WithdrawalFailedEmail } from "../emails/tenant/WithdrawalFailedEmail.js";
 import { RefundDeductedEmail } from "../emails/tenant/RefundDeductedEmail.js";
+import { TenantWelcomeEmail } from "../emails/tenant/TenantWelcomeEmail.js";
+import { TenantBankAccountChangedEmail } from "../emails/tenant/TenantBankAccountChangedEmail.js";
+import { TenantSubscriptionPausedEmail } from "../emails/tenant/TenantSubscriptionPausedEmail.js";
+import { TenantSubscriptionResumedEmail } from "../emails/tenant/TenantSubscriptionResumedEmail.js";
 
 import React from "react";
 
@@ -38,7 +46,7 @@ export interface EmailJobPayload {
   /** Who receives the email: the customer or the tenant/developer. */
   recipientType: "customer" | "tenant";
   /** The type of email to send. */
-  type: "welcome" | "receipt" | "dunning" | "cancel" | "new_subscriber" | "payment_failed" | "manual_invoice" | "manual_invoice_reminder" | "withdrawal_successful" | "withdrawal_failed" | "refund_deducted" | "refund_processed" | "portal_link";
+  type: "welcome" | "receipt" | "dunning" | "cancel" | "new_subscriber" | "payment_failed" | "manual_invoice" | "manual_invoice_reminder" | "withdrawal_successful" | "withdrawal_failed" | "refund_deducted" | "refund_processed" | "portal_link" | "plan_changed" | "wallet_topped_up" | "subscription_paused" | "subscription_resumed" | "bank_account_changed";
   /** Database IDs used to look up the records at dispatch time. */
   tenantId: string;
   customerId?: string;
@@ -49,6 +57,12 @@ export interface EmailJobPayload {
   attemptNumber?: number;
   cancellationReason?: string;
   portalUrl?: string;
+  newPlanId?: string;
+  oldPlanId?: string;
+  topupAmount?: number;
+  balanceAfter?: number;
+  bankName?: string;
+  accountNumber?: string;
 }
 
 /**
@@ -136,6 +150,7 @@ export async function processEmailPayload(data: EmailJobPayload): Promise<void> 
               interval: plan?.interval || "month",
               tenantName: tenant.name,
               hasPaymentToken: !!subscription?.tokenKey,
+              portalUrl: data.portalUrl || `${env.FRONTEND_URL}/portal`,
             });
             break;
 
@@ -225,6 +240,52 @@ export async function processEmailPayload(data: EmailJobPayload): Promise<void> 
             });
             break;
 
+          case "plan_changed":
+            const [oldPlan, newPlan] = await Promise.all([
+              Plan.findById(data.oldPlanId),
+              Plan.findById(data.newPlanId),
+            ]);
+            subject = `Subscription plan updated — ${tenant.name}`;
+            element = React.createElement(PlanChangedEmail, {
+              customerName: customer?.name || "there",
+              tenantName: tenant.name,
+              oldPlanName: oldPlan?.name || "Previous Plan",
+              newPlanName: newPlan?.name || "New Plan",
+              newAmount: formatKobo(newPlan?.amount || 0, newPlan?.currency),
+            });
+            break;
+
+          case "wallet_topped_up":
+            subject = `Wallet top-up successful — ${tenant.name}`;
+            const customerWallet = data.customerId 
+              ? await (await import("../models/Wallet.js")).Wallet.findOne({ customerId: data.customerId, tenantId: data.tenantId })
+              : null;
+            element = React.createElement(WalletToppedUpEmail, {
+              customerName: customer?.name || "there",
+              tenantName: tenant.name,
+              topupAmount: formatKobo(data.topupAmount || 0, "NGN"),
+              balanceAfter: formatKobo(customerWallet?.balance || data.balanceAfter || 0, "NGN"),
+            });
+            break;
+
+          case "subscription_paused":
+            subject = `Your subscription is paused — ${tenant.name}`;
+            element = React.createElement(SubscriptionPausedEmail, {
+              customerName: customer?.name || "there",
+              tenantName: tenant.name,
+              planName: plan?.name || "Subscription",
+            });
+            break;
+
+          case "subscription_resumed":
+            subject = `Your subscription is active — ${tenant.name}`;
+            element = React.createElement(SubscriptionResumedEmail, {
+              customerName: customer?.name || "there",
+              tenantName: tenant.name,
+              planName: plan?.name || "Subscription",
+            });
+            break;
+
           default:
             logger.warn({ type: data.type }, "Unknown customer email type");
             return;
@@ -289,6 +350,42 @@ export async function processEmailPayload(data: EmailJobPayload): Promise<void> 
             element = React.createElement(RefundDeductedEmail, {
               tenantName: tenant.name,
               invoiceId: invoice?._id?.toString() || "—",
+            });
+            break;
+
+          case "welcome":
+            subject = `Welcome to FlexCharge, ${tenant.name}! 🎉`;
+            element = React.createElement(TenantWelcomeEmail, {
+              tenantName: tenant.name,
+            });
+            break;
+
+          case "bank_account_changed":
+            subject = `Security Alert: Settlement bank account changed`;
+            element = React.createElement(TenantBankAccountChangedEmail, {
+              tenantName: tenant.name,
+              bankName: data.bankName || "Unknown Bank",
+              accountNumber: data.accountNumber || "—",
+            });
+            break;
+
+          case "subscription_paused":
+            subject = `Customer subscription paused — ${tenant.name}`;
+            element = React.createElement(TenantSubscriptionPausedEmail, {
+              tenantName: tenant.name,
+              customerName: customer?.name || "Unknown",
+              customerEmail: customer?.email || "—",
+              planName: plan?.name || "Subscription",
+            });
+            break;
+
+          case "subscription_resumed":
+            subject = `Customer subscription resumed — ${tenant.name}`;
+            element = React.createElement(TenantSubscriptionResumedEmail, {
+              tenantName: tenant.name,
+              customerName: customer?.name || "Unknown",
+              customerEmail: customer?.email || "—",
+              planName: plan?.name || "Subscription",
             });
             break;
 

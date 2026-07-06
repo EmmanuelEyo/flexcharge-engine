@@ -324,7 +324,8 @@ export async function processDunningRetry(
       const newPeriodStart = subscription.currentPeriodEnd || now;
       const newPeriodEnd = calculateNextBillingDate(
         newPeriodStart,
-        plan.interval as PlanInterval
+        plan.interval as PlanInterval,
+        plan.intervalDays
       );
       subscription.currentPeriodStart = newPeriodStart;
       subscription.currentPeriodEnd = newPeriodEnd;

@@ -10,6 +10,7 @@ import {
   sendSuccess,
   sendCreated,
   NotFoundError,
+  AppError,
 } from "../utils/apiResponse.js";
 import { env } from "../config/environment.js";
 import { queueEmail } from "../utils/emailDispatcher.js";
@@ -234,6 +235,15 @@ export async function cancelPortalSubscription(
     await subscription.save();
 
     await subscription.populate("planId", "name amount interval currency");
+
+    const cancelCtx = {
+      tenantId: req.tenantId!,
+      customerId: subscription.customerId as any,
+      subscriptionId: subscription._id,
+      cancellationReason: subscription.cancellationReason,
+    };
+    await queueEmail("customer", "cancel", cancelCtx);
+    await queueEmail("tenant", "cancel", cancelCtx);
 
     logger.info({ subscriptionId: subscription._id }, "Subscription scheduled for cancellation via portal");
 
@@ -617,6 +627,140 @@ export async function verifyMandate(
         ? "Mandate is active and ready for billing."
         : "Mandate is not yet active. Please ensure you have transferred ₦50 from the registered account. Bank authorization may take up to 72 hours.",
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * DELETE /portal/payment-methods/:id
+ */
+export async function deletePaymentMethodPortal(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const customer = await Customer.findOne({
+      _id: req.customerId,
+      tenantId: req.tenantId,
+    });
+    if (!customer) throw new NotFoundError("Customer");
+
+    const pm = customer.paymentMethods.find(m => (m as any)._id?.toString() === req.params.id);
+    if (!pm) throw new NotFoundError("Payment method");
+
+    // Block deletion if default and active subscription exists
+    if (pm.isDefault) {
+      const activeSub = await Subscription.findOne({
+        customerId: req.customerId,
+        tenantId: req.tenantId,
+        status: { $in: ["active", "past_due", "trialing"] },
+        renewalMode: "auto",
+      });
+      if (activeSub) {
+        throw new AppError(
+          "Cannot delete default payment method of an active automatic subscription. Please configure a new default payment method first.",
+          400
+        );
+      }
+    }
+
+    // Nomba Cleanup
+    if (pm.methodType === "card" && pm.tokenKey) {
+      try {
+        await nombaService.deleteTokenizedCard(pm.tokenKey);
+      } catch (err) {
+        logger.warn({ tokenKey: pm.tokenKey, err }, "Failed to delete tokenized card from Nomba (might already be deleted)");
+      }
+      if (customer.tokenKey === pm.tokenKey) {
+        customer.tokenKey = undefined;
+        customer.cardLast4 = undefined;
+        customer.cardBrand = undefined;
+      }
+    } else if (pm.methodType === "direct_debit" && pm.mandateId) {
+      try {
+        await nombaService.updateMandateStatus(pm.mandateId, "DELETE");
+      } catch (err) {
+        logger.warn({ mandateId: pm.mandateId, err }, "Failed to delete direct debit mandate from Nomba (might already be deleted)");
+      }
+    }
+
+    customer.paymentMethods = customer.paymentMethods.filter(m => (m as any)._id?.toString() !== req.params.id) as any;
+    await customer.save();
+
+    logger.info({ customerId: req.customerId, pmId: req.params.id }, "Payment method deleted via portal");
+    sendSuccess(res, { message: "Payment method deleted successfully" });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PUT /portal/payment-methods/:id/default
+ */
+export async function setDefaultPaymentMethodPortal(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const customer = await Customer.findOne({
+      _id: req.customerId,
+      tenantId: req.tenantId,
+    });
+    if (!customer) throw new NotFoundError("Customer");
+
+    const pm = customer.paymentMethods.find(m => (m as any)._id?.toString() === req.params.id);
+    if (!pm) throw new NotFoundError("Payment method");
+
+    if (pm.methodType === "direct_debit" && pm.mandateStatus !== "ACTIVE") {
+      throw new AppError("Cannot set a pending or inactive direct debit mandate as default.", 400);
+    }
+
+    customer.paymentMethods.forEach((method: any) => {
+      method.isDefault = false;
+    });
+    pm.isDefault = true;
+
+    if (pm.methodType === "card") {
+      customer.tokenKey = pm.tokenKey;
+      customer.cardLast4 = pm.cardLast4;
+      customer.cardBrand = pm.cardBrand;
+    } else {
+      customer.tokenKey = undefined;
+      customer.cardLast4 = undefined;
+      customer.cardBrand = undefined;
+    }
+
+    // Sync Subscription
+    const activeSub = await Subscription.findOne({
+      customerId: req.customerId,
+      tenantId: req.tenantId,
+      status: { $in: ["active", "past_due", "trialing"] },
+      renewalMode: "auto",
+    });
+
+    if (activeSub) {
+      if (pm.methodType === "card") {
+        activeSub.automaticMethod = "card";
+        activeSub.tokenKey = pm.tokenKey;
+        activeSub.cardLast4 = pm.cardLast4;
+        activeSub.cardBrand = pm.cardBrand;
+      } else {
+        activeSub.automaticMethod = "direct_debit";
+        activeSub.tokenKey = undefined;
+        activeSub.cardLast4 = undefined;
+        activeSub.cardBrand = undefined;
+      }
+      await activeSub.save();
+      logger.info({ subscriptionId: activeSub._id }, "Subscription payment method synced");
+    }
+
+    await customer.save();
+
+    logger.info({ customerId: req.customerId, pmId: req.params.id }, "Default payment method updated via portal");
+    sendSuccess(res, { message: "Default payment method updated successfully" });
   } catch (error) {
     next(error);
   }

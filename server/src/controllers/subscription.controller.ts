@@ -11,6 +11,7 @@ import {
   sendCreated,
   NotFoundError,
   AppError,
+  ConflictError,
 } from "../utils/apiResponse.js";
 import { logger } from "../utils/logger.js";
 import { env } from "../config/environment.js";
@@ -73,6 +74,18 @@ export async function createSubscription(
     });
     if (!plan) {
       throw new NotFoundError("Plan (or plan is inactive)");
+    }
+
+    if (plan.allowMultipleSubscriptions === false) {
+      const existingSub = await Subscription.findOne({
+        ...tenantFilter(req),
+        customerId: customer._id,
+        planId: plan._id,
+        status: { $in: ["active", "past_due"] },
+      });
+      if (existingSub) {
+        throw new ConflictError("Customer already has an active subscription for this plan.");
+      }
     }
 
     // 3. Create subscription in "pending" status
@@ -589,6 +602,15 @@ export async function changeSubscriptionPlan(
       proration: result,
     });
 
+    // Queue plan change email to customer
+    await queueEmail("customer", "plan_changed", {
+      tenantId: subscription.tenantId,
+      customerId: subscription.customerId as any,
+      subscriptionId: subscription._id,
+      oldPlanId: currentPlan._id,
+      newPlanId: newPlan._id,
+    });
+
     logger.info({ subscriptionId: subscription._id, from: currentPlan._id, to: newPlan._id }, "Subscription plan changed");
     sendSuccess(res, { subscription, invoice });
   } catch (error) {
@@ -615,6 +637,14 @@ export async function pauseSubscription(
 
     await queueWebhook(subscription.tenantId, "subscription.paused", { subscriptionId: subscription._id });
 
+    const pauseCtx = {
+      tenantId: subscription.tenantId,
+      customerId: subscription.customerId as any,
+      subscriptionId: subscription._id,
+    };
+    await queueEmail("customer", "subscription_paused", pauseCtx);
+    await queueEmail("tenant", "subscription_paused", pauseCtx);
+
     logger.info({ subscriptionId: subscription._id }, "Subscription paused");
     sendSuccess(res, subscription);
   } catch (error) {
@@ -640,6 +670,14 @@ export async function resumeSubscription(
     await subscription.save();
 
     await queueWebhook(subscription.tenantId, "subscription.resumed", { subscriptionId: subscription._id });
+
+    const resumeCtx = {
+      tenantId: subscription.tenantId,
+      customerId: subscription.customerId as any,
+      subscriptionId: subscription._id,
+    };
+    await queueEmail("customer", "subscription_resumed", resumeCtx);
+    await queueEmail("tenant", "subscription_resumed", resumeCtx);
 
     logger.info({ subscriptionId: subscription._id }, "Subscription resumed");
     sendSuccess(res, subscription);
@@ -791,7 +829,7 @@ export async function chargeNow(
 
       // Advance billing dates
       const newPeriodStart = subscription.currentPeriodEnd || now;
-      const newPeriodEnd = calculateNextBillingDate(newPeriodStart, plan.interval);
+      const newPeriodEnd = calculateNextBillingDate(newPeriodStart, plan.interval, plan.intervalDays);
 
       (subscription as any)._previousStatus = subscription.status;
       subscription.status = "active";

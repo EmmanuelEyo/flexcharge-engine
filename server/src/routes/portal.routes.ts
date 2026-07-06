@@ -12,6 +12,8 @@ import {
   getPaymentMethods,
   initiateDirectDebitMandate,
   verifyMandate,
+  deletePaymentMethodPortal,
+  setDefaultPaymentMethodPortal,
 } from "../controllers/portal.controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { portalAuthenticate } from "../middleware/portalAuthenticate.js";
@@ -36,6 +38,8 @@ const router = Router();
  *   GET  /portal/payment-methods                     — Customer views saved payment methods
  *   POST /portal/payment-methods/mandate/initiate    — Customer starts Direct Debit mandate setup
  *   POST /portal/payment-methods/mandate/verify      — Customer confirms mandate validation transfer
+ *   DELETE /portal/payment-methods/:id               — Customer deletes a payment method
+ *   PUT  /portal/payment-methods/:id/default         — Customer sets a payment method as default
  */
 
 // Tenant creates a portal session for their customer
@@ -58,6 +62,8 @@ router.post("/wallet/topup", initiateWalletTopUp);
 router.get("/payment-methods", getPaymentMethods);
 router.post("/payment-methods/mandate/initiate", initiateDirectDebitMandate);
 router.post("/payment-methods/mandate/verify", verifyMandate);
+router.delete("/payment-methods/:id", deletePaymentMethodPortal);
+router.put("/payment-methods/:id/default", setDefaultPaymentMethodPortal);
 
 export default router;
 

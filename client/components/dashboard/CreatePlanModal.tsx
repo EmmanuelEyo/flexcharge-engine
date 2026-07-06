@@ -3,14 +3,16 @@
 import React, { useEffect, useRef } from "react";
 import Button from "@/components/ui/Button";
 
-export type BillingInterval = "weekly" | "monthly" | "yearly";
+export type BillingInterval = "weekly" | "monthly" | "quarterly" | "yearly" | "custom";
 
 export interface PlanFormData {
   name: string;
   currency: "NGN" | "USD";
   amount: string;
   interval: BillingInterval;
+  intervalDays?: number;
   description: string;
+  allowMultipleSubscriptions: boolean;
 }
 
 interface CreatePlanModalProps {
@@ -28,6 +30,7 @@ export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting 
     amount: "",
     interval: "monthly",
     description: "",
+    allowMultipleSubscriptions: true,
   });
 
   useEffect(() => {
@@ -42,6 +45,7 @@ export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting 
           amount: "",
           interval: "monthly",
           description: "",
+          allowMultipleSubscriptions: true,
         });
       }
     } else {
@@ -126,11 +130,11 @@ export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting 
             <label className="block text-sm font-medium text-slate-600">
               Billing Interval
             </label>
-            <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
-              {(["weekly", "monthly", "yearly"] as BillingInterval[]).map(
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg">
+              {(["weekly", "monthly", "quarterly", "yearly", "custom"] as BillingInterval[]).map(
                 (val) => (
                   <label key={val} className="cursor-pointer relative">
-                    <input type="radio" name="interval" value={val} checked={form.interval === val} onChange={() => setForm({ ...form, interval: val })} className="sr-only peer" />
+                    <input type="radio" name="interval" value={val} checked={form.interval === val} onChange={() => setForm({ ...form, interval: val, intervalDays: val === "custom" ? 30 : undefined })} className="sr-only peer" />
                     <div className="text-center py-2 rounded-md text-sm font-medium text-slate-500 peer-checked:bg-white peer-checked:text-slate-900 peer-checked:shadow-sm transition-all capitalize">
                       {val.charAt(0).toUpperCase() + val.slice(1)}
                     </div>
@@ -139,6 +143,15 @@ export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting 
               )}
             </div>
           </div>
+
+          {form.interval === "custom" && (
+            <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+              <label htmlFor="interval-days" className="block text-sm font-medium text-slate-600">
+                Custom Cycle (Days)
+              </label>
+              <input id="interval-days" type="number" min="1" step="1" required value={form.intervalDays || ""} onChange={(e) => setForm({ ...form, intervalDays: parseInt(e.target.value) || undefined })} placeholder="e.g. 15" className="w-full bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-[#4F46E5] focus:ring-2 focus:ring-[#4F46E5]/20 transition-all placeholder:text-slate-400" />
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label htmlFor="description" className="block text-sm font-medium text-slate-600">
@@ -149,6 +162,32 @@ export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting 
               placeholder="Briefly describe what this plan includes..."
               className="w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-900 focus:outline-none focus:border-[#4F46E5] focus:ring-2 focus:ring-[#4F46E5]/20 transition-all resize-none placeholder:text-slate-400"
             />
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <div>
+              <h4 className="text-sm font-medium text-slate-900">Allow Multiple Subscriptions</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                If enabled, a customer can subscribe to this plan multiple times simultaneously.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.allowMultipleSubscriptions}
+              onClick={() => setForm({ ...form, allowMultipleSubscriptions: !form.allowMultipleSubscriptions })}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#4F46E5] focus:ring-offset-2 ${
+                form.allowMultipleSubscriptions ? "bg-[#4F46E5]" : "bg-slate-200"
+              }`}
+            >
+              <span className="sr-only">Use setting</span>
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  form.allowMultipleSubscriptions ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
           </div>
         </form>
 

@@ -7,6 +7,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import { useSearchParams } from "next/navigation";
 import { usePortal } from "@/context/PortalContext";
+import toast from "react-hot-toast";
 
 interface Subscription {
   _id: string;
@@ -17,6 +18,7 @@ interface Subscription {
     name: string;
     amount: number;
     interval: string;
+    intervalDays?: number;
     currency: string;
   };
 }
@@ -104,17 +106,7 @@ function PortalDashboardContent() {
 
   const [settingsLoading, setSettingsLoading] = useState(false);
 
-  interface ToastState {
-    message: string;
-    type: "success" | "error";
-  }
-  const [toast, setToast] = useState<ToastState | null>(null);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   useEffect(() => {
     async function loadData() {
@@ -163,7 +155,7 @@ function PortalDashboardContent() {
       }
     } catch (err) {
       console.error(err);
-      setToast({ message: "Failed to initiate payment update. Please try again.", type: "error" });
+      toast.error("Failed to initiate payment update. Please try again.");
     } finally {
       setActionLoading(false);
     }
@@ -178,10 +170,10 @@ function PortalDashboardContent() {
       // Refresh payment methods
       const pmRes = await portalApi.get("/portal/payment-methods");
       setPaymentMethods(pmRes.data.data.paymentMethods);
-      setToast({ message: "Mandate initiated. Please follow validation instructions.", type: "success" });
+      toast.success("Mandate initiated. Please follow validation instructions.");
     } catch (err: any) {
       console.error(err);
-      setToast({ message: err.response?.data?.message || "Failed to initiate mandate.", type: "error" });
+      toast.error(err.response?.data?.message || "Failed to initiate mandate.");
     } finally {
       setMandateLoading(false);
     }
@@ -192,11 +184,11 @@ function PortalDashboardContent() {
     try {
       const res = await portalApi.post("/portal/payment-methods/mandate/verify", { mandateId, setAsDefault: true });
       if (res.data.data.isUsable) {
-        setToast({ message: "Mandate verified and activated!", type: "success" });
+        toast.success("Mandate verified and activated!");
         setMandatePending(null);
         setShowMandateModal(false);
       } else {
-        setToast({ message: res.data.data.message || "Mandate not yet active.", type: "error" });
+        toast.error(res.data.data.message || "Mandate not yet active.");
       }
       
       // Refresh payment methods and subscription
@@ -208,7 +200,7 @@ function PortalDashboardContent() {
       setSubscription(subRes.data.data);
     } catch (err: any) {
       console.error(err);
-      setToast({ message: err.response?.data?.message || "Failed to verify mandate.", type: "error" });
+      toast.error(err.response?.data?.message || "Failed to verify mandate.");
     } finally {
       setMandateLoading(false);
     }
@@ -220,9 +212,10 @@ function PortalDashboardContent() {
       const res = await portalApi.post("/portal/cancel");
       setSubscription(res.data.data);
       setShowCancelModal(false);
+      toast.success("Subscription cancelled successfully.");
     } catch (err) {
       console.error(err);
-      setToast({ message: "Failed to cancel subscription.", type: "error" });
+      toast.error("Failed to cancel subscription.");
     } finally {
       setActionLoading(false);
     }
@@ -263,10 +256,10 @@ function PortalDashboardContent() {
         ...(newStatus && wallet.autoTopUpAmount === 0 ? { autoTopUpAmount: 500000, autoTopUpTrigger: 100000 } : {})
       };
       const res = await portalApi.post("/portal/wallet/settings", payload);
-      setWallet(res.data.data);
+      toast.success("Auto top-up status updated!");
     } catch (err) {
       console.error(err);
-      setToast({ message: "Failed to update settings.", type: "error" });
+      toast.error("Failed to update settings.");
     } finally {
       setSettingsLoading(false);
     }
@@ -287,10 +280,10 @@ function PortalDashboardContent() {
         autoTopUpTrigger: trigger * 100, // to kobo
       });
       setWallet(res.data.data);
-      setToast({ message: "Settings saved successfully.", type: "success" });
+      toast.success("Settings saved successfully.");
     } catch (err) {
       console.error(err);
-      setToast({ message: "Failed to save settings.", type: "error" });
+      toast.error("Failed to save settings.");
     } finally {
       setSettingsLoading(false);
     }
@@ -443,7 +436,7 @@ function PortalDashboardContent() {
                     )}
                   </h3>
                   <p className="text-slate-500 mt-2 text-base">
-                    {formatCurrency(subscription.planId.amount, subscription.planId.currency)} / {subscription.planId.interval}
+                    {formatCurrency(subscription.planId.amount, subscription.planId.currency)} / {subscription.planId.interval === "custom" && subscription.planId.intervalDays ? `${subscription.planId.intervalDays} days` : subscription.planId.interval === "custom" ? "cycle" : subscription.planId.interval === "quarterly" ? "3 mos" : subscription.planId.interval === "monthly" ? "mo" : subscription.planId.interval === "yearly" ? "yr" : "week"}
                   </p>
                 </>
               ) : (
@@ -1095,28 +1088,7 @@ function PortalDashboardContent() {
         </div>
       )}
 
-      {toast && (
-        <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300 ${
-          toast.type === "success" 
-            ? "bg-emerald-50 border-emerald-200 text-emerald-950" 
-            : "bg-red-50 border-red-200 text-red-950"
-        }`}>
-          <span className={`material-symbols-outlined text-[20px] ${
-            toast.type === "success" ? "text-emerald-600" : "text-red-600"
-          }`}>
-            {toast.type === "success" ? "check_circle" : "error"}
-          </span>
-          <span className="text-sm font-medium">{toast.message}</span>
-          <button 
-            onClick={() => setToast(null)}
-            className={`transition-colors flex-shrink-0 ${
-              toast.type === "success" ? "text-emerald-500 hover:text-emerald-700" : "text-red-500 hover:text-red-700"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">close</span>
-          </button>
-        </div>
-      )}
+
     </div>
   );
 }

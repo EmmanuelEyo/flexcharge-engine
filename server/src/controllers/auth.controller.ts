@@ -62,6 +62,10 @@ export async function register(
 
     logger.info({ tenantId: tenant._id, email }, "New tenant registered");
 
+    // Queue welcome email to the newly registered tenant
+    const { queueEmail } = await import("../utils/emailDispatcher.js");
+    await queueEmail("tenant", "welcome", { tenantId: tenant._id.toString() });
+
     sendCreated(res, {
       tenant: tenant.toJSON(),
       token,
