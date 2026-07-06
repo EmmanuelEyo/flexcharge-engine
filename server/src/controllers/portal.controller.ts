@@ -452,6 +452,10 @@ export async function initiateDirectDebitMandate(
       throw new Error("Account name must be between 3 and 100 characters");
     }
 
+    if (!/^\d{3,6}$/.test(bankCode)) {
+      throw new Error("Invalid bankCode format. Must be a 3 to 6-digit NIBSS code.");
+    }
+
     const customer = await Customer.findOne({
       _id: req.customerId,
       tenantId: req.tenantId,
