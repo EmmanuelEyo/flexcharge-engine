@@ -1459,15 +1459,20 @@ class NombaService {
     logger.info(
       {
         mandateId,
-        status: data?.status,
-        adviceStatus: data?.adviceStatus,
+        status: data?.mandateStatus,
+        adviceStatus: data?.mandateAdviceStatus,
       },
       "Nomba mandate status checked"
     );
 
+    // Nomba returns status in various cases e.g. "Active", "Advice Sent"
+    // Normalize to uppercase and underscore
+    const rawStatus = data?.mandateStatus || "PENDING";
+    const rawAdvice = data?.mandateAdviceStatus || "ADVICE_NOT_SENT";
+
     return {
-      status: data?.status || "PENDING",
-      adviceStatus: data?.adviceStatus || "ADVICE_NOT_SENT",
+      status: rawStatus.toUpperCase().replace(/\s+/g, "_"),
+      adviceStatus: rawAdvice.toUpperCase().replace(/\s+/g, "_"),
       mandateId: data?.mandateId || mandateId,
     };
   }
