@@ -19,6 +19,7 @@ import type {
   ChangePasswordInput,
   ForgotPasswordInput,
   ResetPasswordInput,
+  UpdatePayoutSettingsInput,
 } from "../validators/auth.validator.js";
 
 /**
@@ -379,6 +380,48 @@ export async function resetPassword(
 
     logger.info({ tenantId: tenant._id }, "Tenant reset password via token");
     sendSuccess(res, { message: "Password has been successfully reset" });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PATCH /auth/payout-settings
+ * Update the tenant's automated payout settings.
+ */
+export async function updatePayoutSettings(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const data = req.body as UpdatePayoutSettingsInput;
+
+    const tenant = await Tenant.findByIdAndUpdate(
+      req.tenantId,
+      {
+        $set: {
+          payoutSchedule: data.payoutSchedule,
+          payoutThreshold: data.payoutThreshold,
+          payoutDayOfWeek: data.payoutDayOfWeek,
+          payoutDayOfMonth: data.payoutDayOfMonth,
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!tenant) {
+      throw new AppError("Tenant not found", 404);
+    }
+
+    logger.info({ tenantId: req.tenantId }, "Payout settings updated");
+
+    sendSuccess(res, {
+      payoutSchedule: tenant.payoutSchedule,
+      payoutThreshold: tenant.payoutThreshold,
+      payoutDayOfWeek: tenant.payoutDayOfWeek,
+      payoutDayOfMonth: tenant.payoutDayOfMonth,
+    });
   } catch (error) {
     next(error);
   }
