@@ -12,6 +12,7 @@ import { defineWalletAutoTopupJob, WALLET_AUTO_TOPUP_JOB_NAME } from "../jobs/wa
 import { defineDailyAnalyticsJob, DAILY_ANALYTICS_JOB_NAME } from "../jobs/recordDailyAnalytics.js";
 import { defineCleanupPendingSubscriptionsJob, CLEANUP_PENDING_SUBS_JOB_NAME } from "../jobs/cleanupPendingSubscriptions.js";
 import { defineScheduledPayoutsJob, SCHEDULED_PAYOUTS_JOB_NAME } from "../jobs/processScheduledPayouts.js";
+import { defineMandateSyncJob, MANDATE_SYNC_JOB_NAME } from "../jobs/mandateSync.js";
 
 /**
  * Agenda configuration — MongoDB-backed job scheduler.
@@ -52,6 +53,7 @@ export function getAgenda(): Agenda {
     defineDailyAnalyticsJob(agenda);
     defineCleanupPendingSubscriptionsJob(agenda);
     defineScheduledPayoutsJob(agenda);
+    defineMandateSyncJob(agenda);
 
     // Error handling
     agenda.on("error", (err) => {
@@ -123,6 +125,9 @@ export async function startAgenda(): Promise<void> {
   // Wallet auto top-up scan: runs every 5 minutes
   // Per feature_implementation_blueprint.md §1
   await agendaInstance.every("5 minutes", WALLET_AUTO_TOPUP_JOB_NAME);
+
+  // Mandate sync scan: runs every 10 minutes to activate pending direct debits
+  await agendaInstance.every("10 minutes", MANDATE_SYNC_JOB_NAME);
 
   // Daily analytics snapshot generation at midnight (UTC)
   await agendaInstance.every("0 0 * * *", DAILY_ANALYTICS_JOB_NAME);
