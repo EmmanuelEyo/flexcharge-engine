@@ -13,7 +13,7 @@ portalApi.interceptors.request.use((config) => {
   let token: string | undefined;
 
   if (typeof window !== "undefined") {
-    token = sessionStorage.getItem("fc_portal_token") ?? undefined;
+    token = localStorage.getItem("fc_portal_token") ?? undefined;
   }
 
   if (token) {
@@ -28,7 +28,7 @@ portalApi.interceptors.response.use(
     // If we get a 401 Unauthorized in the portal, the token might be expired.
     // We should probably redirect to an expired session page, but for now we'll just throw.
     if (error?.response?.status === 401 && typeof window !== "undefined") {
-      sessionStorage.removeItem("fc_portal_token");
+      localStorage.removeItem("fc_portal_token");
       
       // Safeguard: Only redirect if not already on the portal entry page
       if (window.location.pathname !== "/portal") {

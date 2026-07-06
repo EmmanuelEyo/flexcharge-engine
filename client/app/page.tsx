@@ -9,7 +9,7 @@ export default function Home() {
 
   useEffect(() => {
     // Checking for the custom token used in login/register pages
-    const token = typeof window !== "undefined" ? sessionStorage.getItem("fc_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("fc_token") : null;
     
     if (token) {
       router.push("/dashboard");
