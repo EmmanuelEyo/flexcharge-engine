@@ -137,67 +137,7 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
 
   // === MANUAL RENEWAL FLOW ===
   if (subscription.renewalMode === "manual" || !subscription.tokenKey) {
-    try {
-      const checkoutResult = await nombaService.createCheckoutOrder({
-        orderReference,
-        amount: plan.amount,
-        currency: plan.currency || "NGN",
-        customerEmail: customer.email,
-        callbackUrl: `${env.FRONTEND_URL}/success?orderRef=${orderReference}`,
-        tokenizeCard: false,
-      });
-
-      invoice.checkoutLink = checkoutResult.checkoutLink;
-      await invoice.save();
-
-      // Transition subscription to past_due
-      if (subscription.status === "active") {
-        (subscription as any)._previousStatus = subscription.status;
-        subscription.status = "past_due";
-      }
-      subscription.dunningAttemptCount = 1;
-      subscription.lastDunningAt = new Date();
-      await subscription.save();
-
-      // Create DunningAttempt record for manual reminders
-      const retryDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // +24h default
-      await DunningAttempt.create({
-        tenantId: subscription.tenantId,
-        subscriptionId: subscription._id,
-        invoiceId: invoice._id,
-        attemptNumber: 1,
-        scheduledFor: retryDate,
-        status: "scheduled",
-        failureReason: "Awaiting manual payment",
-        nextRetryAt: retryDate,
-        retryStrategy: "manual",
-      });
-
-      // Send manual invoice email
-      await queueEmail("customer", "manual_invoice", {
-        tenantId: subscription.tenantId,
-        customerId: customer._id,
-        subscriptionId: subscription._id,
-        invoiceId: invoice._id,
-      });
-
-      logger.info(
-        { subscriptionId: subscription._id, invoiceId: invoice._id },
-        "Created manual renewal invoice and entered dunning"
-      );
-
-      return { success: true, invoiceId: invoice._id };
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown manual checkout error";
-      
-      return await handleChargeFailed(
-        subscription,
-        invoice,
-        undefined,
-        errorMessage
-      );
-    }
+    return await triggerManualRenewal(subscription, invoice, customer, plan, orderReference);
   }
 
   // === AUTO RENEWAL FLOW ===
@@ -254,6 +194,18 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
       });
       chargeSuccess = cardResult.success;
       chargeMessage = cardResult.message;
+
+      // === OTP REQUIRED FALLBACK ===
+      if (!chargeSuccess && cardResult.requiresOTP) {
+        logger.warn(
+          { subscriptionId: subscription._id },
+          "Bank requires OTP. Converting subscription to manual renewal."
+        );
+        subscription.renewalMode = "manual";
+        await subscription.save();
+        
+        return await triggerManualRenewal(subscription, invoice, customer, plan, orderReference);
+      }
     }
 
     if (chargeSuccess) {
@@ -566,4 +518,78 @@ export async function sendUpcomingRenewalReminders(daysAhead: number = 3): Promi
 
   return reminderCount;
 }
+/**
+ * Triggers a manual renewal flow by generating a checkout link,
+ * placing the subscription into past_due (if active), creating a 
+ * manual dunning record, and queueing a manual invoice email.
+ */
+async function triggerManualRenewal(
+  subscription: any,
+  invoice: any,
+  customer: any,
+  plan: any,
+  orderReference: string
+): Promise<{ success: boolean; invoiceId?: Types.ObjectId; error?: string }> {
+  try {
+    const checkoutResult = await nombaService.createCheckoutOrder({
+      orderReference,
+      amount: plan.amount,
+      currency: plan.currency || "NGN",
+      customerEmail: customer.email,
+      callbackUrl: `${env.FRONTEND_URL}/success?orderRef=${orderReference}`,
+      tokenizeCard: false,
+    });
 
+    invoice.checkoutLink = checkoutResult.checkoutLink;
+    await invoice.save();
+
+    // Transition subscription to past_due
+    if (subscription.status === "active") {
+      (subscription as any)._previousStatus = subscription.status;
+      subscription.status = "past_due";
+    }
+    subscription.dunningAttemptCount = 1;
+    subscription.lastDunningAt = new Date();
+    await subscription.save();
+
+    // Create DunningAttempt record for manual reminders
+    const retryDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // +24h default
+    await DunningAttempt.create({
+      tenantId: subscription.tenantId,
+      subscriptionId: subscription._id,
+      invoiceId: invoice._id,
+      attemptNumber: 1,
+      scheduledFor: retryDate,
+      status: "scheduled",
+      failureReason: "Awaiting manual payment",
+      nextRetryAt: retryDate,
+      retryStrategy: "manual",
+    });
+
+    // Send manual invoice email
+    await queueEmail("customer", "manual_invoice", {
+      tenantId: subscription.tenantId,
+      customerId: customer._id,
+      subscriptionId: subscription._id,
+      invoiceId: invoice._id,
+    });
+
+    logger.info(
+      { subscriptionId: subscription._id, invoiceId: invoice._id },
+      "Created manual renewal invoice and entered dunning"
+    );
+
+    return { success: true, invoiceId: invoice._id };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown manual checkout error";
+    
+    // Fall back to handleChargeFailed so standard logic runs
+    return await handleChargeFailed(
+      subscription,
+      invoice,
+      undefined,
+      errorMessage
+    );
+  }
+}

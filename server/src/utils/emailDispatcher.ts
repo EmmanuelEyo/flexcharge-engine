@@ -20,9 +20,10 @@ interface QueueEmailContext {
   attemptNumber?: number;
   cancellationReason?: string;
   portalUrl?: string;
+  cardLast4?: string;
 }
 
-type CustomerEmailType = "welcome" | "receipt" | "dunning" | "cancel" | "manual_invoice" | "manual_invoice_reminder" | "refund_processed" | "portal_link";
+type CustomerEmailType = "welcome" | "receipt" | "dunning" | "cancel" | "manual_invoice" | "manual_invoice_reminder" | "refund_processed" | "portal_link" | "card_expiring";
 type TenantEmailType = "new_subscriber" | "payment_failed" | "cancel" | "withdrawal_successful" | "withdrawal_failed" | "refund_deducted";
 
 export async function queueEmail(

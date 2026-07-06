@@ -26,6 +26,20 @@ async function saveTokenizedCardToCustomer(customerId: any, tokenizedCardData: a
   customer.cardLast4 = tokenizedCardData.cardLast4;
   customer.cardBrand = tokenizedCardData.cardBrand;
 
+  // Extract expiry if available, else try to fetch it
+  let expiryStr = tokenizedCardData.tokenExpirationDate;
+  if (!expiryStr) {
+    try {
+      const cardList = await nombaService.listTokenizedCards({ customerEmail: customer.email });
+      const matchedCard = cardList.tokenizedCardDataList.find(c => c.tokenKey === tokenizedCardData.tokenKey);
+      if (matchedCard?.tokenExpirationDate) {
+        expiryStr = matchedCard.tokenExpirationDate;
+      }
+    } catch (error) {
+      logger.warn({ customerId }, "Failed to fetch token expiration date from Nomba");
+    }
+  }
+
   const existingIndex = customer.paymentMethods.findIndex(
     (pm: any) => pm.methodType === "card" && pm.tokenKey === tokenizedCardData.tokenKey
   );
@@ -38,6 +52,7 @@ async function saveTokenizedCardToCustomer(customerId: any, tokenizedCardData: a
       tokenKey: tokenizedCardData.tokenKey,
       cardLast4: tokenizedCardData.cardLast4,
       cardBrand: tokenizedCardData.cardBrand,
+      tokenExpirationDate: expiryStr,
     } as any);
   } else {
     customer.paymentMethods.forEach((pm: any) => pm.isDefault = false);
@@ -46,6 +61,10 @@ async function saveTokenizedCardToCustomer(customerId: any, tokenizedCardData: a
       method.isDefault = true;
       method.cardLast4 = tokenizedCardData.cardLast4;
       method.cardBrand = tokenizedCardData.cardBrand;
+      if (expiryStr) {
+        method.tokenExpirationDate = expiryStr;
+        method.expiryReminderSent = false;
+      }
     }
   }
 

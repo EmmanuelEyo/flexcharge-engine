@@ -6,6 +6,8 @@ import { nombaService } from "../services/nomba.service.js";
 import { creditWallet } from "../services/wallet.service.js";
 import { ledgerService } from "../services/ledger.service.js";
 import { logger } from "../utils/logger.js";
+import { env } from "../config/environment.js";
+import { queueEmail } from "../utils/emailDispatcher.js";
 
 /**
  * Wallet Auto Top-Up Job — Scans for depleted wallets and refills them.
@@ -61,6 +63,23 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
             continue;
           }
 
+          // Concurrency Lock: Check if there's already a pending top-up in the last 15 minutes
+          const lockThreshold = new Date(Date.now() - 15 * 60 * 1000);
+          const pendingTopup = await Invoice.findOne({
+            customerId: customer._id,
+            description: "Wallet Auto Top-Up",
+            status: "pending",
+            createdAt: { $gte: lockThreshold }
+          });
+
+          if (pendingTopup) {
+            logger.warn(
+              { walletId: wallet._id, pendingInvoiceId: pendingTopup._id },
+              "Skipping wallet auto top-up: another top-up is currently in progress."
+            );
+            continue;
+          }
+
           // Charge via Nomba
           const orderReference = `topup_${wallet._id}_${Date.now()}`;
           const amount = wallet.autoTopUpAmount;
@@ -110,6 +129,34 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
             logger.info(
               { walletId: wallet._id, amount },
               "Wallet auto top-up successful"
+            );
+          } else if (!chargeResult.success && chargeResult.requiresOTP) {
+            // === OTP REQUIRED FALLBACK ===
+            const checkoutResult = await nombaService.createCheckoutOrder({
+              orderReference,
+              amount,
+              currency: wallet.currency as "NGN" | "CDF" | "USD" | undefined,
+              customerEmail: customer.email,
+              callbackUrl: `${env.FRONTEND_URL}/success?orderRef=${orderReference}`,
+              tokenizeCard: false,
+            });
+
+            invoice.checkoutLink = checkoutResult.checkoutLink;
+            invoice.status = "failed";
+            invoice.failureReason = "Bank requires OTP. Manual action required.";
+            await invoice.save();
+
+            // Queue a generic manual invoice email (or a specific wallet top-up one if it exists)
+            // Reusing manual_invoice for now
+            await queueEmail("customer", "manual_invoice", {
+              tenantId: wallet.tenantId,
+              customerId: customer._id,
+              invoiceId: invoice._id,
+            });
+
+            logger.warn(
+              { walletId: wallet._id, reason: invoice.failureReason },
+              "Wallet auto top-up requires OTP. Generated checkout link."
             );
           } else {
             // Failed charge

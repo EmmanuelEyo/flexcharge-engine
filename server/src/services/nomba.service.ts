@@ -85,6 +85,7 @@ interface NombaCheckoutOrderDetailsResponse {
 interface NombaTokenizedChargeResponse {
   code: string;
   description: string;
+  status?: boolean | string;
   data: {
     // Nomba returns this as boolean true/false per their docs
     // In practice may arrive as string "true"/"false" — we normalise it below
@@ -751,13 +752,8 @@ class NombaService {
   async chargeTokenizedCard(
     params: ChargeTokenizedCardParams
   ): Promise<{
-    /**
-     * True when Nomba's outer `code === "00"` AND `data.status` is truthy.
-     * This is the canonical success indicator to check in the billing engine.
-     * DO NOT check for string values like "SUCCESS" or "APPROVED" — Nomba
-     * returns a boolean (or boolean string) for this endpoint.
-     */
     success: boolean;
+    requiresOTP?: boolean;
     message: string;
   }> {
     const authHeaders = await this.getAuthHeaders();
@@ -805,16 +801,29 @@ class NombaService {
     // Primary success gate: Nomba outer response code must be "00"
     const outerSuccess = code === "00";
 
-    // Normalise data.status — Nomba docs show boolean but field may arrive as
-    // string "true"/"false" depending on SDK version. Handle both defensively.
-    const statusRaw = data.status;
+    // Strict check on the top-level status
+    const topLevelStatus = response.data.status;
+    const isTopLevelSuccess =
+      topLevelStatus === true ||
+      topLevelStatus === "true" ||
+      (typeof topLevelStatus === "string" && topLevelStatus.toLowerCase() === "true");
+
+    // Normalise data.status (inner status)
+    const statusRaw = data?.status;
     const innerSuccess =
       statusRaw === true ||
       statusRaw === "true" ||
       (typeof statusRaw === "string" && statusRaw.toLowerCase() === "true");
 
-    const success = outerSuccess && innerSuccess;
-    const message = data.message ?? description ?? (success ? "success" : "failed");
+    // We only consider it a full success if topLevelStatus is true AND inner data.status is true
+    const success = outerSuccess && isTopLevelSuccess && innerSuccess;
+    
+    // Check if the response explicitly requires an OTP
+    const requiresOTP = outerSuccess && !isTopLevelSuccess && 
+                        typeof data?.message === "string" && 
+                        data.message.toLowerCase().includes("otp");
+
+    const message = data?.message ?? description ?? (success ? "success" : "failed");
 
     logger.info(
       {
@@ -822,6 +831,8 @@ class NombaService {
         tokenKey: params.tokenKey,
         outerCode: code,
         innerStatus: statusRaw,
+        topLevelStatus,
+        requiresOTP,
         success,
         message,
         amountNaira: amountInNaira,
@@ -830,7 +841,7 @@ class NombaService {
       "Nomba tokenized card charge completed"
     );
 
-    return { success, message };
+    return { success, requiresOTP, message };
   }
 
   // ============================================================
