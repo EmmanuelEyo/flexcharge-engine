@@ -6,6 +6,7 @@ import { Invoice } from "../models/Invoice.js";
 import { ledgerService } from "../services/ledger.service.js";
 import { nombaService } from "../services/nomba.service.js";
 import { logger } from "../utils/logger.js";
+import { queueEmail } from "../utils/emailDispatcher.js";
 
 // ============================================================
 // DASHBOARD & DEVELOPER READ-ONLY APIS
@@ -88,6 +89,13 @@ export async function setBankAccount(req: Request, res: Response): Promise<void>
     
     await tenant.save();
 
+    // Notify developer/tenant of bank account change
+    await queueEmail("tenant", "bank_account_changed", {
+      tenantId: tenantId!,
+      bankName: lookupResult.accountName, // Or fetch actual bank name but accountName has context
+      accountNumber,
+    });
+
     res.json({
       success: true,
       message: "Bank account configured successfully",
@@ -96,6 +104,23 @@ export async function setBankAccount(req: Request, res: Response): Promise<void>
   } catch (error) {
     logger.error({ error, body: req.body }, "Error configuring bank account");
     res.status(500).json({ error: error instanceof Error ? error.message : "Failed to configure bank account" });
+  }
+}
+
+/**
+ * GET /ledger/dashboard/banks
+ * Fetch the list of banks from Nomba.
+ */
+export async function getBanksList(req: Request, res: Response): Promise<void> {
+  try {
+    const banks = await nombaService.getBanks();
+    res.json({
+      success: true,
+      data: banks,
+    });
+  } catch (error) {
+    logger.error({ error, tenantId: req.tenantId }, "Error fetching bank list");
+    res.status(500).json({ error: error instanceof Error ? error.message : "Failed to fetch bank list" });
   }
 }
 

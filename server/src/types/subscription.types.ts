@@ -42,6 +42,7 @@ export const PLAN_INTERVALS = [
   "monthly",
   "quarterly",
   "yearly",
+  "custom",
 ] as const;
 
 export type PlanInterval = (typeof PLAN_INTERVALS)[number];
@@ -102,4 +103,5 @@ export const INTERVAL_DAYS: Record<PlanInterval, number> = {
   monthly: 30,
   quarterly: 90,
   yearly: 365,
+  custom: 0,
 };

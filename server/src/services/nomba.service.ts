@@ -1023,6 +1023,32 @@ class NombaService {
   }
 
   /**
+   * Fetch all bank lists supported by Nomba transfers.
+   * GET /v1/transfers/banks
+   */
+  async getBanks(): Promise<Array<{ code: string; name: string }>> {
+    const authHeaders = await this.getAuthHeaders();
+    const response = await this.client.get<{
+      code: string;
+      description: string;
+      data: any;
+    }>(`/v1/transfers/banks`, { headers: authHeaders });
+
+    const code = response.data.code;
+    const isSuccess = code === "00" || code === "200" || response.data.description === "SUCCESS";
+
+    if (isSuccess && response.data.data) {
+      if (Array.isArray(response.data.data)) {
+        return response.data.data;
+      }
+      if (Array.isArray(response.data.data.results)) {
+        return response.data.data.results;
+      }
+    }
+    throw new Error(response.data.description || "Failed to fetch banks from Nomba");
+  }
+
+  /**
    * Initiate a payout from our Nomba master account.
    * POST /v2/transfers/bank
    * 
@@ -1459,15 +1485,20 @@ class NombaService {
     logger.info(
       {
         mandateId,
-        status: data?.status,
-        adviceStatus: data?.adviceStatus,
+        status: data?.mandateStatus,
+        adviceStatus: data?.mandateAdviceStatus,
       },
       "Nomba mandate status checked"
     );
 
+    // Nomba returns status in various cases e.g. "Active", "Advice Sent"
+    // Normalize to uppercase and underscore
+    const rawStatus = data?.mandateStatus || "PENDING";
+    const rawAdvice = data?.mandateAdviceStatus || "ADVICE_NOT_SENT";
+
     return {
-      status: data?.status || "PENDING",
-      adviceStatus: data?.adviceStatus || "ADVICE_NOT_SENT",
+      status: rawStatus.toUpperCase().replace(/\s+/g, "_"),
+      adviceStatus: rawAdvice.toUpperCase().replace(/\s+/g, "_"),
       mandateId: data?.mandateId || mandateId,
     };
   }

@@ -63,6 +63,16 @@ export const analyticsService = {
                   case: { $eq: ["$plan.interval", "weekly"] },
                   then: { $multiply: [{ $divide: ["$plan.amount", 7] }, 30.4167] },
                 },
+                {
+                  case: { $eq: ["$plan.interval", "custom"] },
+                  then: {
+                    $cond: [
+                      { $gt: ["$plan.intervalDays", 0] },
+                      { $multiply: ["$plan.amount", { $divide: [30.4167, "$plan.intervalDays"] }] },
+                      0
+                    ]
+                  }
+                },
               ],
               default: 0,
             },

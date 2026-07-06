@@ -55,10 +55,37 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
 
           const customer = wallet.customerId as any;
 
-          if (!customer || !customer.tokenKey) {
+          if (!customer) {
+            logger.warn({ walletId: wallet._id }, "Wallet auto top-up failed: Customer not found");
+            continue;
+          }
+
+          const defaultMethod = customer.paymentMethods?.find((pm: any) => pm.isDefault);
+          
+          let paymentType: "card" | "direct_debit" | null = null;
+          let tokenKey: string | undefined = undefined;
+          let mandateId: string | undefined = undefined;
+
+          if (defaultMethod) {
+            if (defaultMethod.methodType === "card" && defaultMethod.tokenKey) {
+              paymentType = "card";
+              tokenKey = defaultMethod.tokenKey;
+            } else if (defaultMethod.methodType === "direct_debit" && defaultMethod.mandateStatus === "ACTIVE" && defaultMethod.mandateId) {
+              paymentType = "direct_debit";
+              mandateId = defaultMethod.mandateId;
+            }
+          }
+
+          // Fallback to legacy top-level customer tokenKey
+          if (!paymentType && customer.tokenKey) {
+            paymentType = "card";
+            tokenKey = customer.tokenKey;
+          }
+          
+          if (!paymentType) {
             logger.warn(
-              { walletId: wallet._id, customerId: customer?._id },
-              "Wallet auto top-up failed: No vaulted payment method found for customer"
+              { walletId: wallet._id, customerId: customer._id },
+              "Wallet auto top-up failed: No active default payment method or top-level card found"
             );
             continue;
           }
@@ -95,16 +122,33 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
             isRenewal: false,
           });
 
-          const chargeResult = await nombaService.chargeTokenizedCard({
-            tokenKey: customer.tokenKey,
-            orderReference,
-            amount,
-            currency: wallet.currency as "NGN" | "CDF" | "USD" | undefined,
-            customerEmail: customer.email,
-            customerId: customer._id.toString(),
-          });
+          let chargeSuccess = false;
+          let chargeMessage = "";
+          let requiresOTP = false;
 
-          if (chargeResult.success) {
+          if (paymentType === "direct_debit" && mandateId) {
+            logger.info(
+              { walletId: wallet._id, customerId: customer._id, mandateId },
+              "Charging direct debit mandate for wallet auto top-up"
+            );
+            const debitResult = await nombaService.debitMandate(mandateId, amount);
+            chargeSuccess = debitResult.success;
+            chargeMessage = debitResult.message;
+          } else if (paymentType === "card" && tokenKey) {
+            const chargeResult = await nombaService.chargeTokenizedCard({
+              tokenKey,
+              orderReference,
+              amount,
+              currency: wallet.currency as "NGN" | "CDF" | "USD" | undefined,
+              customerEmail: customer.email,
+              customerId: customer._id.toString(),
+            });
+            chargeSuccess = chargeResult.success;
+            chargeMessage = chargeResult.message || "";
+            requiresOTP = chargeResult.requiresOTP || false;
+          }
+
+          if (chargeSuccess) {
             // Update invoice
             invoice.status = "paid";
             invoice.paidAt = new Date();
@@ -126,11 +170,18 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
               invoice._id.toString()
             );
 
+            // Queue wallet topped up email notification to customer
+            await queueEmail("customer", "wallet_topped_up", {
+              tenantId: wallet.tenantId,
+              customerId: customer._id,
+              topupAmount: amount,
+            });
+
             logger.info(
               { walletId: wallet._id, amount },
               "Wallet auto top-up successful"
             );
-          } else if (!chargeResult.success && chargeResult.requiresOTP) {
+          } else if (!chargeSuccess && requiresOTP) {
             // === OTP REQUIRED FALLBACK ===
             const checkoutResult = await nombaService.createCheckoutOrder({
               orderReference,
@@ -161,7 +212,7 @@ export function defineWalletAutoTopupJob(agenda: Agenda): void {
           } else {
             // Failed charge
             invoice.status = "failed";
-            invoice.failureReason = chargeResult.message || "Payment declined";
+            invoice.failureReason = chargeMessage || "Payment declined";
             await invoice.save();
 
             logger.warn(

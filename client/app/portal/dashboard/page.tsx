@@ -4,8 +4,10 @@ import React, { useEffect, useState, Suspense } from "react";
 import portalApi from "@/lib/portalApi";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import Select from "@/components/ui/Select";
 import { useSearchParams } from "next/navigation";
 import { usePortal } from "@/context/PortalContext";
+import toast from "react-hot-toast";
 
 interface Subscription {
   _id: string;
@@ -16,6 +18,7 @@ interface Subscription {
     name: string;
     amount: number;
     interval: string;
+    intervalDays?: number;
     currency: string;
   };
 }
@@ -51,6 +54,26 @@ interface PaymentMethod {
   mandateStatus?: string;
 }
 
+const bankOptions = [
+  { value: "044", label: "Access Bank" },
+  { value: "058", label: "Guaranty Trust Bank (GTB)" },
+  { value: "033", label: "United Bank for Africa (UBA)" },
+  { value: "057", label: "Zenith Bank" },
+  { value: "011", label: "First Bank of Nigeria" },
+  { value: "232", label: "Sterling Bank" },
+  { value: "032", label: "Union Bank" },
+  { value: "215", label: "Unity Bank" },
+  { value: "035", label: "Wema Bank" },
+  { value: "050", label: "Ecobank" },
+  { value: "070", label: "Fidelity Bank" },
+  { value: "214", label: "First City Monument Bank (FCMB)" },
+  { value: "076", label: "Polaris Bank" },
+  { value: "082", label: "Keystone Bank" },
+  { value: "221", label: "Stanbic IBTC Bank" },
+  { value: "068", label: "Standard Chartered Bank" },
+  { value: "030", label: "Heritage Bank" },
+];
+
 function PortalDashboardContent() {
   const searchParams = useSearchParams();
   const { customer, loading: customerLoading } = usePortal();
@@ -83,17 +106,7 @@ function PortalDashboardContent() {
 
   const [settingsLoading, setSettingsLoading] = useState(false);
 
-  interface ToastState {
-    message: string;
-    type: "success" | "error";
-  }
-  const [toast, setToast] = useState<ToastState | null>(null);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   useEffect(() => {
     async function loadData() {
@@ -142,7 +155,7 @@ function PortalDashboardContent() {
       }
     } catch (err) {
       console.error(err);
-      setToast({ message: "Failed to initiate payment update. Please try again.", type: "error" });
+      toast.error("Failed to initiate payment update. Please try again.");
     } finally {
       setActionLoading(false);
     }
@@ -157,10 +170,10 @@ function PortalDashboardContent() {
       // Refresh payment methods
       const pmRes = await portalApi.get("/portal/payment-methods");
       setPaymentMethods(pmRes.data.data.paymentMethods);
-      setToast({ message: "Mandate initiated. Please follow validation instructions.", type: "success" });
+      toast.success("Mandate initiated. Please follow validation instructions.");
     } catch (err: any) {
       console.error(err);
-      setToast({ message: err.response?.data?.message || "Failed to initiate mandate.", type: "error" });
+      toast.error(err.response?.data?.message || "Failed to initiate mandate.");
     } finally {
       setMandateLoading(false);
     }
@@ -171,11 +184,11 @@ function PortalDashboardContent() {
     try {
       const res = await portalApi.post("/portal/payment-methods/mandate/verify", { mandateId, setAsDefault: true });
       if (res.data.data.isUsable) {
-        setToast({ message: "Mandate verified and activated!", type: "success" });
+        toast.success("Mandate verified and activated!");
         setMandatePending(null);
         setShowMandateModal(false);
       } else {
-        setToast({ message: res.data.data.message || "Mandate not yet active.", type: "error" });
+        toast.error(res.data.data.message || "Mandate not yet active.");
       }
       
       // Refresh payment methods and subscription
@@ -187,7 +200,7 @@ function PortalDashboardContent() {
       setSubscription(subRes.data.data);
     } catch (err: any) {
       console.error(err);
-      setToast({ message: err.response?.data?.message || "Failed to verify mandate.", type: "error" });
+      toast.error(err.response?.data?.message || "Failed to verify mandate.");
     } finally {
       setMandateLoading(false);
     }
@@ -199,9 +212,10 @@ function PortalDashboardContent() {
       const res = await portalApi.post("/portal/cancel");
       setSubscription(res.data.data);
       setShowCancelModal(false);
+      toast.success("Subscription cancelled successfully.");
     } catch (err) {
       console.error(err);
-      setToast({ message: "Failed to cancel subscription.", type: "error" });
+      toast.error("Failed to cancel subscription.");
     } finally {
       setActionLoading(false);
     }
@@ -242,10 +256,10 @@ function PortalDashboardContent() {
         ...(newStatus && wallet.autoTopUpAmount === 0 ? { autoTopUpAmount: 500000, autoTopUpTrigger: 100000 } : {})
       };
       const res = await portalApi.post("/portal/wallet/settings", payload);
-      setWallet(res.data.data);
+      toast.success("Auto top-up status updated!");
     } catch (err) {
       console.error(err);
-      setToast({ message: "Failed to update settings.", type: "error" });
+      toast.error("Failed to update settings.");
     } finally {
       setSettingsLoading(false);
     }
@@ -266,10 +280,10 @@ function PortalDashboardContent() {
         autoTopUpTrigger: trigger * 100, // to kobo
       });
       setWallet(res.data.data);
-      setToast({ message: "Settings saved successfully.", type: "success" });
+      toast.success("Settings saved successfully.");
     } catch (err) {
       console.error(err);
-      setToast({ message: "Failed to save settings.", type: "error" });
+      toast.error("Failed to save settings.");
     } finally {
       setSettingsLoading(false);
     }
@@ -422,7 +436,7 @@ function PortalDashboardContent() {
                     )}
                   </h3>
                   <p className="text-slate-500 mt-2 text-base">
-                    {formatCurrency(subscription.planId.amount, subscription.planId.currency)} / {subscription.planId.interval}
+                    {formatCurrency(subscription.planId.amount, subscription.planId.currency)} / {subscription.planId.interval === "custom" && subscription.planId.intervalDays ? `${subscription.planId.intervalDays} days` : subscription.planId.interval === "custom" ? "cycle" : subscription.planId.interval === "quarterly" ? "3 mos" : subscription.planId.interval === "monthly" ? "mo" : subscription.planId.interval === "yearly" ? "yr" : "week"}
                   </p>
                 </>
               ) : (
@@ -970,39 +984,13 @@ function PortalDashboardContent() {
                       </div>
                     ) : (
                       <div>
-                        <div className="relative">
-                          <select
-                            id="bankCode"
-                            required
-                            disabled={mandateLoading}
-                            value={mandateForm.bankCode}
-                            onChange={(e) => setMandateForm({ ...mandateForm, bankCode: e.target.value })}
-                            className="block w-full pl-3 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none"
-                          >
-                            <option value="" disabled>Select your bank</option>
-                            <option value="044">Access Bank</option>
-                            <option value="058">Guaranty Trust Bank (GTB)</option>
-                            <option value="033">United Bank for Africa (UBA)</option>
-                            <option value="057">Zenith Bank</option>
-                            <option value="011">First Bank of Nigeria</option>
-                            <option value="232">Sterling Bank</option>
-                            <option value="032">Union Bank</option>
-                            <option value="215">Unity Bank</option>
-                            <option value="035">Wema Bank</option>
-                            <option value="050">Ecobank</option>
-                            <option value="070">Fidelity Bank</option>
-                            <option value="214">First City Monument Bank (FCMB)</option>
-                            <option value="076">Polaris Bank</option>
-                            <option value="082">Keystone Bank</option>
-                            <option value="221">Stanbic IBTC Bank</option>
-                            <option value="068">Standard Chartered Bank</option>
-                            <option value="215">Unity Bank</option>
-                            <option value="030">Heritage Bank</option>
-                          </select>
-                          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                            <span className="material-symbols-outlined text-slate-400">expand_more</span>
-                          </div>
-                        </div>
+                        <Select
+                          options={bankOptions}
+                          value={mandateForm.bankCode}
+                          onChange={(val) => setMandateForm({ ...mandateForm, bankCode: val })}
+                          disabled={mandateLoading}
+                          placeholder="Select your bank"
+                        />
                         <button
                           type="button"
                           onClick={() => {
@@ -1100,28 +1088,7 @@ function PortalDashboardContent() {
         </div>
       )}
 
-      {toast && (
-        <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300 ${
-          toast.type === "success" 
-            ? "bg-emerald-50 border-emerald-200 text-emerald-950" 
-            : "bg-red-50 border-red-200 text-red-950"
-        }`}>
-          <span className={`material-symbols-outlined text-[20px] ${
-            toast.type === "success" ? "text-emerald-600" : "text-red-600"
-          }`}>
-            {toast.type === "success" ? "check_circle" : "error"}
-          </span>
-          <span className="text-sm font-medium">{toast.message}</span>
-          <button 
-            onClick={() => setToast(null)}
-            className={`transition-colors flex-shrink-0 ${
-              toast.type === "success" ? "text-emerald-500 hover:text-emerald-700" : "text-red-500 hover:text-red-700"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">close</span>
-          </button>
-        </div>
-      )}
+
     </div>
   );
 }

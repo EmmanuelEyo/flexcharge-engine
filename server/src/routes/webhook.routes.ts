@@ -278,6 +278,13 @@ router.post(
             await saveTokenizedCardToCustomer(invoice.customerId, tokenizedCardData);
           }
 
+          // Queue wallet topped up email notification to customer
+          await queueEmail("customer", "wallet_topped_up", {
+            tenantId: invoice.tenantId,
+            customerId: invoice.customerId as any,
+            topupAmount: invoice.amount,
+          });
+
           logger.info({ walletId, amount: invoice.amount, hasToken: !!tokenizedCardData?.tokenKey }, "Manual wallet top-up successful");
         } else if (invoice) {
           logger.info({ orderReference }, "Manual top-up invoice already paid or failed");
@@ -336,7 +343,8 @@ router.post(
             const newPeriodStart = sub.currentPeriodEnd || now;
             const newPeriodEnd = calculateNextBillingDate(
               newPeriodStart,
-              plan.interval as PlanInterval
+              plan.interval as PlanInterval,
+              plan.intervalDays
             );
 
             sub.currentPeriodStart = newPeriodStart;
@@ -404,17 +412,43 @@ router.post(
         await saveTokenizedCardToCustomer(subscription.customerId, tokenizedCardData);
       }
 
-      // Transition: pending → active
-      (subscription as any)._previousStatus = subscription.status;
-      subscription.status = "active";
+      const plan = subscription.planId as any;
+
+      if (plan && plan.allowMultipleSubscriptions === false) {
+        const existingActive = await Subscription.findOne({
+          _id: { $ne: subscription._id },
+          tenantId: subscription.tenantId,
+          customerId: subscription.customerId,
+          planId: plan._id,
+          status: { $in: ["active", "past_due"] }
+        });
+
+        if (existingActive) {
+          logger.error(
+            { subscriptionId: subscription._id, customerId: subscription.customerId },
+            "CRITICAL: Customer paid for duplicate subscription but plan disallows multiples. Canceling duplicate. Manual refund required."
+          );
+          
+          subscription.status = "canceled";
+          await subscription.save();
+          // We intentionally skip activating billing period dates below, but we'll still update the invoice to paid so we have a record of the money.
+        } else {
+          // Transition: pending → active
+          (subscription as any)._previousStatus = subscription.status;
+          subscription.status = "active";
+        }
+      } else {
+        // Transition: pending → active
+        (subscription as any)._previousStatus = subscription.status;
+        subscription.status = "active";
+      }
 
       // Set billing period dates
-      const plan = subscription.planId as any;
       const now = new Date();
       subscription.currentPeriodStart = now;
 
-      if (plan && plan.interval) {
-        const periodEnd = calculateNextBillingDate(now, plan.interval as PlanInterval);
+      if (plan && plan.interval && subscription.status === "active") {
+        const periodEnd = calculateNextBillingDate(now, plan.interval as PlanInterval, plan.intervalDays);
         subscription.currentPeriodEnd = periodEnd;
         subscription.nextBillingDate = periodEnd;
       }

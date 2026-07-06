@@ -1,6 +1,6 @@
 import React from "react";
 
-export type PlanInterval = "weekly" | "monthly" | "yearly";
+export type PlanInterval = "weekly" | "monthly" | "quarterly" | "yearly" | "custom";
 
 export interface Plan {
   id: string;
@@ -8,11 +8,13 @@ export interface Plan {
   currency: "NGN" | "USD";
   amount: number;
   interval: PlanInterval;
+  intervalDays?: number;
   description?: string;
   subscribers: number;
   status: "active" | "inactive";
   createdAt: string;
   slug?: string;
+  allowMultipleSubscriptions: boolean;
 }
 
 interface PlanCardProps {
@@ -22,16 +24,25 @@ interface PlanCardProps {
   onToggleStatus?: (plan: Plan) => void;
 }
 
-const INTERVAL_LABEL: Record<PlanInterval, string> = {
-  weekly: "/ week",
-  monthly: "/ mo",
-  yearly: "/ yr",
+const getIntervalLabel = (interval: PlanInterval, intervalDays?: number) => {
+  if (interval === "custom" && intervalDays) {
+    return `/ ${intervalDays} days`;
+  }
+  return {
+    weekly: "/ week",
+    monthly: "/ mo",
+    quarterly: "/ 3 mos",
+    yearly: "/ yr",
+    custom: "/ cycle",
+  }[interval] || "";
 };
 
 const INTERVAL_BADGE_COLOR: Record<PlanInterval, string> = {
   weekly: "bg-amber-50 text-amber-700 border-amber-100",
   monthly: "bg-blue-50 text-blue-700 border-blue-100",
+  quarterly: "bg-teal-50 text-teal-700 border-teal-100",
   yearly: "bg-purple-50 text-purple-700 border-purple-100",
+  custom: "bg-slate-100 text-slate-700 border-slate-200",
 };
 
 function formatAmount(currency: "NGN" | "USD", amount: number) {
@@ -76,7 +87,7 @@ export default function PlanCard({ plan, onEdit, onCopyId, onToggleStatus, }: Pl
             {formatAmount(plan.currency, plan.amount)}
           </span>
           <span className="text-sm text-slate-400 ml-1">
-            {INTERVAL_LABEL[plan.interval]}
+            {getIntervalLabel(plan.interval, plan.intervalDays)}
           </span>
         </div>
 

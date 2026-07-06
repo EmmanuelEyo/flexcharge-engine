@@ -3,7 +3,8 @@ import {
   getLedgerBalance, 
   setBankAccount, 
   requestWithdrawal,
-  processRefund
+  processRefund,
+  getBanksList
 } from "../controllers/ledger.controller.js";
 import { authenticate, authenticateJWT } from "../middleware/authenticate.js";
 
@@ -20,6 +21,12 @@ router.use("/dashboard", authenticateJWT);
  * Retrieve the tenant's current ledger balance and transaction history.
  */
 router.get("/dashboard/balance", getLedgerBalance);
+
+/**
+ * GET /api/ledger/dashboard/banks
+ * Fetch the list of banks from Nomba.
+ */
+router.get("/dashboard/banks", getBanksList);
 
 /**
  * POST /api/ledger/dashboard/bank-account

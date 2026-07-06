@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Button from "@/components/ui/Button";
 import api from "@/lib/api";
+import toast from "react-hot-toast";
 
 interface ApiKey {
   _id: string;
@@ -54,8 +55,9 @@ function ApiKeysCard() {
       setNewlyGeneratedKey(res.data?.data?.rawKey);
       setNewKeyName("");
       await fetchKeys();
+      toast.success("API key generated successfully!");
     } catch (err: any) {
-      alert(err.message || "Failed to generate key");
+      toast.error(err.message || "Failed to generate key");
     } finally {
       setGenerating(false);
     }
@@ -66,8 +68,9 @@ function ApiKeysCard() {
     try {
       await api.delete(`/auth/api-keys/${id}`);
       await fetchKeys();
+      toast.success("API key revoked successfully!");
     } catch (err: any) {
-      alert(err.message || "Failed to revoke key");
+      toast.error(err.message || "Failed to revoke key");
     }
   };
 
@@ -75,6 +78,7 @@ function ApiKeysCard() {
     if (!newlyGeneratedKey) return;
     navigator.clipboard.writeText(newlyGeneratedKey).catch(() => {});
     setCopiedKey(true);
+    toast.success("API key copied to clipboard!");
     setTimeout(() => setCopiedKey(false), 2000);
   };
 
@@ -231,9 +235,10 @@ function WebhookCard() {
     try {
       await api.patch("/auth/webhook", { webhookUrl: enabled ? url : "" });
       setSaved(true);
+      toast.success("Webhook settings saved successfully!");
       setTimeout(() => setSaved(false), 2500);
     } catch (err: any) {
-      alert(err.message || "Failed to save webhook");
+      toast.error(err.message || "Failed to save webhook");
     } finally {
       setSaving(false);
     }
@@ -300,7 +305,7 @@ function WebhookCard() {
             <button 
               onClick={() => {
                 navigator.clipboard.writeText(secret).catch(() => {});
-                alert("Signing secret copied!");
+                toast.success("Signing secret copied to clipboard!");
               }} 
               disabled={loading}
               className="px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:opacity-50"
