@@ -472,8 +472,8 @@ export async function initiateDirectDebitMandate(
     // Generate a numeric-only merchant reference (Nomba requires this)
     const merchantReference = Date.now().toString() + Math.floor(Math.random() * 10000).toString();
 
-    // Set mandate window: start now, end in 5 years
-    const startDate = new Date();
+    // Set mandate window: start in 5 minutes (prevents validation errors from minute-truncation time drift), end in 5 years
+    const startDate = new Date(Date.now() + 5 * 60 * 1000);
     const endDate = new Date();
     endDate.setFullYear(endDate.getFullYear() + 5);
 
