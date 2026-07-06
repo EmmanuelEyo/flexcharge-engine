@@ -72,6 +72,7 @@ function PortalDashboardContent() {
   const [mandateLoading, setMandateLoading] = useState(false);
   const [mandateForm, setMandateForm] = useState({ bankCode: "", accountNumber: "", phoneNumber: "", accountName: "", address: "" });
   const [mandatePending, setMandatePending] = useState<any>(null);
+  const [customBankMode, setCustomBankMode] = useState(false);
 
   
   // Wallet modals state
@@ -868,6 +869,7 @@ function PortalDashboardContent() {
                   setShowPaymentSelectorModal(false);
                   setMandatePending(null);
                   setMandateForm({ bankCode: "", accountNumber: "", phoneNumber: "", accountName: "", address: "" });
+                  setCustomBankMode(false);
                   setShowMandateModal(true);
                 }}
                 className="w-full flex items-start gap-4 p-4 border border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all text-left"
@@ -939,39 +941,81 @@ function PortalDashboardContent() {
                     <label htmlFor="bankCode" className="block text-sm font-medium text-slate-700 mb-1">
                       Bank
                     </label>
-                    <div className="relative">
-                      <select
-                        id="bankCode"
-                        required
-                        disabled={mandateLoading}
-                        value={mandateForm.bankCode}
-                        onChange={(e) => setMandateForm({ ...mandateForm, bankCode: e.target.value })}
-                        className="block w-full pl-3 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none"
-                      >
-                        <option value="" disabled>Select your bank</option>
-                        <option value="044">Access Bank</option>
-                        <option value="058">Guaranty Trust Bank (GTB)</option>
-                        <option value="033">United Bank for Africa (UBA)</option>
-                        <option value="057">Zenith Bank</option>
-                        <option value="011">First Bank of Nigeria</option>
-                        <option value="232">Sterling Bank</option>
-                        <option value="032">Union Bank</option>
-                        <option value="215">Unity Bank</option>
-                        <option value="035">Wema Bank</option>
-                        <option value="050">Ecobank</option>
-                        <option value="070">Fidelity Bank</option>
-                        <option value="214">First City Monument Bank (FCMB)</option>
-                        <option value="076">Polaris Bank</option>
-                        <option value="082">Keystone Bank</option>
-                        <option value="221">Stanbic IBTC Bank</option>
-                        <option value="068">Standard Chartered Bank</option>
-                        <option value="215">Unity Bank</option>
-                        <option value="030">Heritage Bank</option>
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                        <span className="material-symbols-outlined text-slate-400">expand_more</span>
+                    {customBankMode ? (
+                      <div className="space-y-2">
+                        <Input
+                          type="text"
+                          name="bankCode"
+                          id="bankCode"
+                          placeholder="e.g. 999992 or 058"
+                          value={mandateForm.bankCode}
+                          onChange={(e) => setMandateForm({ ...mandateForm, bankCode: e.target.value })}
+                          disabled={mandateLoading}
+                          required
+                          pattern="\d{3,6}"
+                          title="Must be a 3 to 6-digit NIBSS code"
+                          icon="account_balance"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomBankMode(false);
+                            setMandateForm({ ...mandateForm, bankCode: "" });
+                          }}
+                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">list</span>
+                          Select from list
+                        </button>
                       </div>
-                    </div>
+                    ) : (
+                      <div>
+                        <div className="relative">
+                          <select
+                            id="bankCode"
+                            required
+                            disabled={mandateLoading}
+                            value={mandateForm.bankCode}
+                            onChange={(e) => setMandateForm({ ...mandateForm, bankCode: e.target.value })}
+                            className="block w-full pl-3 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none"
+                          >
+                            <option value="" disabled>Select your bank</option>
+                            <option value="044">Access Bank</option>
+                            <option value="058">Guaranty Trust Bank (GTB)</option>
+                            <option value="033">United Bank for Africa (UBA)</option>
+                            <option value="057">Zenith Bank</option>
+                            <option value="011">First Bank of Nigeria</option>
+                            <option value="232">Sterling Bank</option>
+                            <option value="032">Union Bank</option>
+                            <option value="215">Unity Bank</option>
+                            <option value="035">Wema Bank</option>
+                            <option value="050">Ecobank</option>
+                            <option value="070">Fidelity Bank</option>
+                            <option value="214">First City Monument Bank (FCMB)</option>
+                            <option value="076">Polaris Bank</option>
+                            <option value="082">Keystone Bank</option>
+                            <option value="221">Stanbic IBTC Bank</option>
+                            <option value="068">Standard Chartered Bank</option>
+                            <option value="215">Unity Bank</option>
+                            <option value="030">Heritage Bank</option>
+                          </select>
+                          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                            <span className="material-symbols-outlined text-slate-400">expand_more</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomBankMode(true);
+                            setMandateForm({ ...mandateForm, bankCode: "" });
+                          }}
+                          className="mt-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">help</span>
+                          Bank not listed?
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <Input
