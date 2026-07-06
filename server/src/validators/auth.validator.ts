@@ -44,8 +44,11 @@ export const createApiKeySchema = z.object({
 export const updateWebhookSchema = z.object({
   webhookUrl: z
     .string()
-    .url("Invalid webhook URL")
-    .trim(),
+    .trim()
+    .refine(
+      (val) => val === "" || z.string().url().safeParse(val).success,
+      { message: "Invalid webhook URL" }
+    ),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
