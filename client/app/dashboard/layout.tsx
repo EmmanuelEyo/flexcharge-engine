@@ -88,7 +88,7 @@ export default function DashboardLayout({ children, }: {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? sessionStorage.getItem("fc_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("fc_token") : null;
     if (!token) {
       router.replace("/login");
     } else {
@@ -97,8 +97,8 @@ export default function DashboardLayout({ children, }: {
   }, [router]);
 
   const handleLogout = () => {
-    sessionStorage.removeItem("fc_token");
-    sessionStorage.removeItem("fc_user");
+    localStorage.removeItem("fc_token");
+    localStorage.removeItem("fc_user");
     router.push("/login");
   };
 

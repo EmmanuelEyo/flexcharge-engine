@@ -12,13 +12,13 @@ function PortalEntryContent() {
     const token = searchParams.get("token");
 
     if (token) {
-      sessionStorage.setItem("fc_portal_token", token);
+      localStorage.setItem("fc_portal_token", token);
       // Wait a moment for UX purposes before redirecting
       setTimeout(() => {
         router.replace("/portal/dashboard");
       }, 500);
     } else {
-      const storedToken = sessionStorage.getItem("fc_portal_token");
+      const storedToken = localStorage.getItem("fc_portal_token");
       if (storedToken) {
         router.replace("/portal/dashboard");
       } else {
