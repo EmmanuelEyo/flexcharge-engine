@@ -229,7 +229,14 @@ function WebhookCard() {
   async function handleSave() {
     setSaving(true);
     try {
-      await api.patch("/auth/webhook", { webhookUrl: enabled ? url : "" });
+      let finalUrl = "";
+      if (enabled) {
+        finalUrl = url;
+        if (finalUrl && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+          finalUrl = `https://${finalUrl}`;
+        }
+      }
+      await api.patch("/auth/webhook", { webhookUrl: finalUrl });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err: any) {
@@ -270,7 +277,7 @@ function WebhookCard() {
               <span className="text-slate-400 font-mono text-sm">https://</span>
             </div>
             <input 
-              type="url" 
+              type="text" 
               value={url} 
               onChange={(e) => setUrl(e.target.value)} 
               placeholder="api.yourdomain.com/webhooks/flexcharge" 
@@ -328,10 +335,10 @@ function WebhookCard() {
 
 function QuickReferenceCard() {
   const links = [
-    { label: "Authentication Guide", href: "#" },
-    { label: "Webhook Signatures", href: "#" },
-    { label: "Handling Retries", href: "#" },
-    { label: "API Reference", href: "/docs" },
+    { label: "Authentication Guide", href: "/dashboard/developers/docs#authentication-guide" },
+    { label: "Webhook Signatures", href: "/dashboard/developers/docs#webhook-signatures" },
+    { label: "Handling Retries", href: "/dashboard/developers/docs#handling-retries" },
+    { label: "API Reference", href: "/dashboard/developers/docs" },
   ];
 
   return (
