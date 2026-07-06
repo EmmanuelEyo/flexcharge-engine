@@ -143,11 +143,13 @@ function SubscriberDrawer({
       setLoadingAction(action);
       await api.post(`/subscriptions/${subscriber.id}/${action}`);
       onUpdate();
+      toast.success(`Subscription successfully ${action === 'pause' ? 'paused' : action === 'resume' ? 'resumed' : 'cancelled'}!`);
       if (action === 'cancel') {
         onClose();
       }
     } catch (error) {
       console.error(`Failed to ${action} subscription:`, error);
+      toast.error(`Failed to ${action} subscription`);
     } finally {
       setLoadingAction(null);
     }
@@ -158,10 +160,11 @@ function SubscriberDrawer({
       setLoadingAction("send_link");
       await api.post(`/portal/sessions`, { customerId: subscriber.customerId });
       setCopiedLink(true); // Using existing state variable for the toast
+      toast.success("Portal link generated and sent successfully!");
       setTimeout(() => setCopiedLink(false), 3000);
     } catch (error) {
       console.error("Failed to send portal link:", error);
-      alert("Failed to send portal link");
+      toast.error("Failed to send portal link");
     } finally {
       setLoadingAction(null);
     }

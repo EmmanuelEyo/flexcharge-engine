@@ -4,6 +4,8 @@ import {
   listCustomers,
   getCustomer,
   updateCustomer,
+  deleteCustomerPaymentMethod,
+  setCustomerDefaultPaymentMethod,
 } from "../controllers/customer.controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
@@ -29,5 +31,7 @@ router.post("/", validate(createCustomerSchema), createCustomer);
 router.get("/", listCustomers);
 router.get("/:id", getCustomer);
 router.patch("/:id", validate(updateCustomerSchema), updateCustomer);
+router.delete("/:customerId/payment-methods/:id", deleteCustomerPaymentMethod);
+router.put("/:customerId/payment-methods/:id/default", setCustomerDefaultPaymentMethod);
 
 export default router;

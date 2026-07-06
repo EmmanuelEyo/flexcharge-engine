@@ -33,9 +33,10 @@ import { env } from "../config/environment.js";
  */
 export function calculateNextBillingDate(
   currentPeriodEnd: Date,
-  interval: PlanInterval
+  interval: PlanInterval,
+  intervalDays?: number
 ): Date {
-  const days = INTERVAL_DAYS[interval];
+  const days = interval === "custom" && intervalDays ? intervalDays : INTERVAL_DAYS[interval as Exclude<PlanInterval, "custom">];
   const next = new Date(currentPeriodEnd);
   next.setDate(next.getDate() + days);
   return next;
@@ -227,7 +228,8 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
       const newPeriodStart = subscription.currentPeriodEnd || now;
       const newPeriodEnd = calculateNextBillingDate(
         newPeriodStart,
-        plan.interval
+        plan.interval,
+        plan.intervalDays
       );
 
       subscription.currentPeriodStart = newPeriodStart;

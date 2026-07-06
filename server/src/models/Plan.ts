@@ -25,6 +25,7 @@ export interface IPlan extends Document {
   trialDays: number;
   features: string[];
   creditsPerCycle?: number;
+  allowMultipleSubscriptions: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -97,6 +98,10 @@ const planSchema = new Schema<IPlan>(
         },
         message: "Credits per cycle must be an integer (kobo). Got: {VALUE}",
       },
+    },
+    allowMultipleSubscriptions: {
+      type: Boolean,
+      default: true,
     },
     isActive: {
       type: Boolean,

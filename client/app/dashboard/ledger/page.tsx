@@ -5,6 +5,7 @@ import Button from "@/components/ui/Button";
 import api from "@/lib/api";
 import StatCard from "@/components/dashboard/StatCard";
 import Select from "@/components/ui/Select";
+import toast from "react-hot-toast";
 
 interface LedgerBalance {
   availableBalance: number;
@@ -33,6 +34,7 @@ export default function LedgerPage() {
   const [bankCode, setBankCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [bankLoading, setBankLoading] = useState(false);
+  const [banks, setBanks] = useState<{ value: string; label: string }[]>([]);
 
   const [payoutSettings, setPayoutSettings] = useState<PayoutSettings>({
     payoutSchedule: "weekly",
@@ -69,6 +71,29 @@ export default function LedgerPage() {
     }
   };
 
+  const fetchBanks = async () => {
+    try {
+      const res = await api.get("/ledger/dashboard/banks");
+      if (res.data.data) {
+        setBanks(
+          res.data.data.map((b: any) => ({
+            value: b.code,
+            label: b.name,
+          }))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to fetch banks", err);
+    }
+  };
+
+  const handleOpenBankModal = () => {
+    setIsBankModalOpen(true);
+    if (banks.length === 0) {
+      fetchBanks();
+    }
+  };
+
   const handleSetBank = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -77,8 +102,11 @@ export default function LedgerPage() {
       await api.post("/ledger/dashboard/bank-account", { bankCode, accountNumber });
       setIsBankModalOpen(false);
       fetchLedger();
+      toast.success("Bank account configured successfully!");
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to configure bank account");
+      const errMsg = err.response?.data?.error || "Failed to configure bank account";
+      setError(errMsg);
+      toast.error(errMsg);
     } finally {
       setBankLoading(false);
     }
@@ -91,8 +119,11 @@ export default function LedgerPage() {
       setError("");
       await api.patch("/auth/payout-settings", payoutSettings);
       fetchLedger();
+      toast.success("Payout settings saved successfully!");
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to save payout settings");
+      const errMsg = err.response?.data?.error || "Failed to save payout settings";
+      setError(errMsg);
+      toast.error(errMsg);
     } finally {
       setSettingsLoading(false);
     }
@@ -123,7 +154,7 @@ export default function LedgerPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Button variant="secondary" onClick={() => setIsBankModalOpen(true)}>
+          <Button variant="secondary" onClick={handleOpenBankModal}>
             {data?.settlementAccount ? "Update Bank Account" : "Configure Bank Account"}
           </Button>
         </div>
@@ -305,7 +336,7 @@ export default function LedgerPage() {
             </div>
             <h3 className="text-lg font-semibold text-slate-900 mb-1">No bank account configured</h3>
             <p className="text-slate-500 mb-4">You need to set up a settlement account to request payouts.</p>
-            <Button variant="secondary" onClick={() => setIsBankModalOpen(true)}>
+            <Button variant="secondary" onClick={handleOpenBankModal}>
               Configure Now
             </Button>
           </div>
@@ -406,18 +437,14 @@ export default function LedgerPage() {
             <form onSubmit={handleSetBank}>
               <div className="space-y-4 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Bank Code</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Bank</label>
+                  <Select
                     value={bankCode}
-                    onChange={(e) => setBankCode(e.target.value)}
-                    required
-                    placeholder="e.g. 058 (GTBank)"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all"
+                    onChange={(val) => setBankCode(val)}
+                    options={banks}
+                    placeholder={banks.length === 0 ? "Loading banks..." : "Select a bank"}
+                    searchable={true}
                   />
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    Use Nomba sandbox bank codes (e.g. 058 for GTBank, 033 for UBA).
-                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Account Number</label>

@@ -11,6 +11,7 @@ interface PublicPlan {
   amount: number;
   currency: string;
   interval: string;
+  intervalDays?: number;
   description: string;
   tenantId: {
     _id: string;
@@ -200,7 +201,7 @@ export default function PayPage({
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h3 className="font-medium text-slate-900">{plan.name}</h3>
-                <p className="text-sm text-slate-500 capitalize">{plan.interval} billing</p>
+                <p className="text-sm text-slate-500 capitalize">{plan.interval === "custom" && plan.intervalDays ? `Every ${plan.intervalDays} days` : `${plan.interval} billing`}</p>
               </div>
               <span className="font-medium text-slate-900">{amountFormatted}</span>
             </div>

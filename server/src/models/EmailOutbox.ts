@@ -19,6 +19,14 @@ export interface IEmailOutbox extends Document {
   lastError?: string;
   createdAt: Date;
   updatedAt: Date;
+
+  // New context fields
+  newPlanId?: Types.ObjectId;
+  oldPlanId?: Types.ObjectId;
+  topupAmount?: number;
+  balanceAfter?: number;
+  bankName?: string;
+  accountNumber?: string;
 }
 
 const EmailOutboxSchema = new Schema<IEmailOutbox>(
@@ -43,6 +51,14 @@ const EmailOutboxSchema = new Schema<IEmailOutbox>(
     },
     retries: { type: Number, default: 0 },
     lastError: { type: String },
+
+    // New context fields
+    newPlanId: { type: Schema.Types.ObjectId, ref: "Plan" },
+    oldPlanId: { type: Schema.Types.ObjectId, ref: "Plan" },
+    topupAmount: { type: Number },
+    balanceAfter: { type: Number },
+    bankName: { type: String },
+    accountNumber: { type: String },
   },
   { timestamps: true }
 );

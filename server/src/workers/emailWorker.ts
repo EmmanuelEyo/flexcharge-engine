@@ -49,6 +49,12 @@ export function startEmailWorker() {
           attemptNumber: job.attemptNumber,
           cancellationReason: job.cancellationReason,
           portalUrl: job.portalUrl,
+          newPlanId: (job as any).newPlanId?.toString(),
+          oldPlanId: (job as any).oldPlanId?.toString(),
+          topupAmount: (job as any).topupAmount,
+          balanceAfter: (job as any).balanceAfter,
+          bankName: (job as any).bankName,
+          accountNumber: (job as any).accountNumber,
         };
 
         // Process it
