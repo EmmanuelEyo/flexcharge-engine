@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
 import { Plan } from "../models/Plan.js";
+import { Subscription } from "../models/Subscription.js";
 import { tenantFilter } from "../middleware/tenantScope.js";
 import {
   sendSuccess,
@@ -67,9 +68,30 @@ export async function listPlans(
     if (req.query.active === "true") filter.isActive = true;
     if (req.query.active === "false") filter.isActive = false;
 
-    const plans = await Plan.find(filter).sort({ createdAt: -1 });
+    const plans = await Plan.find(filter).sort({ createdAt: -1 }).lean();
 
-    sendSuccess(res, plans);
+    // Fetch subscriber counts
+    const planIds = plans.map((p) => p._id);
+    const subscriberCounts = await Subscription.aggregate([
+      {
+        $match: {
+          planId: { $in: planIds },
+          status: { $in: ["active", "trialing", "past_due"] },
+        },
+      },
+      { $group: { _id: "$planId", count: { $sum: 1 } } },
+    ]);
+
+    const countMap = new Map(
+      subscriberCounts.map((s) => [s._id.toString(), s.count])
+    );
+
+    const plansWithCounts = plans.map((p) => ({
+      ...p,
+      subscribers: countMap.get(p._id.toString()) || 0,
+    }));
+
+    sendSuccess(res, plansWithCounts);
   } catch (error) {
     next(error);
   }

@@ -18,9 +18,10 @@ interface CreatePlanModalProps {
   onClose: () => void;
   onSubmit: (data: PlanFormData) => void;
   isSubmitting?: boolean;
+  initialData?: PlanFormData | null;
 }
 
-export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting = false }: CreatePlanModalProps) {
+export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting = false, initialData }: CreatePlanModalProps) {
   const [form, setForm] = React.useState<PlanFormData>({
     name: "",
     currency: "NGN",
@@ -32,13 +33,24 @@ export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting 
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
+      if (initialData) {
+        setForm(initialData);
+      } else {
+        setForm({
+          name: "",
+          currency: "NGN",
+          amount: "",
+          interval: "monthly",
+          description: "",
+        });
+      }
     } else {
       document.body.style.overflow = "";
     }
     return () => {
       document.body.style.overflow = "";
     };
-  }, [open]);
+  }, [open, initialData]);
 
   const overlayRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -64,7 +76,7 @@ export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting 
       <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in-0 zoom-in-95 duration-200">
         <div className="px-6 py-5 border-b border-slate-200 flex justify-between items-center flex-shrink-0">
           <h2 className="text-xl font-semibold text-slate-900">
-            Create New Plan
+            {initialData ? "Edit Plan" : "Create New Plan"}
           </h2>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-red-500 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100" aria-label="Close modal">
             <span className="material-symbols-outlined text-[20px] leading-none">
@@ -145,7 +157,7 @@ export default function CreatePlanModal({ open, onClose, onSubmit, isSubmitting 
             Cancel
           </Button>
           <Button variant="primary" type="submit" form="create-plan-form" disabled={isSubmitting}>
-            {isSubmitting ? "Creating..." : "Create Plan"}
+            {isSubmitting ? "Saving..." : initialData ? "Save Changes" : "Create Plan"}
           </Button>
         </div>
       </div>

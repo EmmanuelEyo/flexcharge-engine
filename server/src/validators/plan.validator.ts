@@ -71,6 +71,10 @@ export const updatePlanSchema = z.object({
   features: z.array(z.string().trim()).optional(),
   creditsPerCycle: z.number().int().nonnegative().optional(),
   isActive: z.boolean().optional(),
+  interval: z.enum(PLAN_INTERVALS, {
+    message: "Interval must be one of: weekly, monthly, quarterly, yearly",
+  }).optional(),
+  currency: z.string().length(3, "Currency must be a 3-letter code").optional(),
 });
 
 export type CreatePlanInput = z.infer<typeof createPlanSchema>;
