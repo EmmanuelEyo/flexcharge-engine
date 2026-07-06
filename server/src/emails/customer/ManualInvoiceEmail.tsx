@@ -17,6 +17,7 @@ interface ManualInvoiceEmailProps {
   amount: string;
   tenantName: string;
   checkoutLink: string;
+  portalLink?: string;
 }
 
 /**
@@ -28,6 +29,7 @@ export function ManualInvoiceEmail({
   amount,
   tenantName,
   checkoutLink,
+  portalLink,
 }: ManualInvoiceEmailProps) {
   return (
     <Html lang="en">
@@ -61,6 +63,20 @@ export function ManualInvoiceEmail({
             <Button href={checkoutLink} style={buttonStyle}>
               Pay Invoice Now
             </Button>
+
+            {portalLink && (
+              <Section style={upgradeSectionStyle}>
+                <Text style={upgradeTitleStyle}>
+                  Tired of paying manually?
+                </Text>
+                <Text style={upgradeTextStyle}>
+                  Set up automatic billing using your Credit Card or Bank Account (Direct Debit) to enjoy uninterrupted service — no more reminder emails.
+                </Text>
+                <Button href={portalLink} style={upgradeButtonStyle}>
+                  Set Up Automatic Billing
+                </Button>
+              </Section>
+            )}
           </Section>
 
           <Section style={footerStyle}>
@@ -158,6 +174,39 @@ const buttonStyle: React.CSSProperties = {
   padding: "16px 0",
   borderRadius: "8px",
   marginTop: "24px",
+};
+
+const upgradeSectionStyle: React.CSSProperties = {
+  marginTop: "32px",
+  paddingTop: "24px",
+  borderTop: "1px dashed #d1d5db",
+};
+
+const upgradeTitleStyle: React.CSSProperties = {
+  color: "#1a1a2e",
+  fontSize: "15px",
+  fontWeight: 700,
+  margin: "0 0 8px 0",
+};
+
+const upgradeTextStyle: React.CSSProperties = {
+  color: "#6b6b8a",
+  fontSize: "13px",
+  lineHeight: "20px",
+  margin: "0 0 16px 0",
+};
+
+const upgradeButtonStyle: React.CSSProperties = {
+  backgroundColor: "#059669",
+  color: "#fff",
+  fontSize: "14px",
+  fontWeight: 600,
+  textDecoration: "none",
+  textAlign: "center" as const,
+  display: "block",
+  width: "100%",
+  padding: "12px 0",
+  borderRadius: "8px",
 };
 
 const footerStyle: React.CSSProperties = {

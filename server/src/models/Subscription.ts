@@ -29,6 +29,7 @@ export interface ISubscription extends Document {
 
   // === RENEWAL MODE ===
   renewalMode: "auto" | "manual";
+  automaticMethod: "card" | "direct_debit";
 
   // === NOMBA TOKEN (populated after successful checkout) ===
   tokenKey?: string;
@@ -109,6 +110,11 @@ const subscriptionSchema = new Schema<ISubscription>(
       type: String,
       enum: ["auto", "manual"],
       default: "auto",
+    },
+    automaticMethod: {
+      type: String,
+      enum: ["card", "direct_debit"],
+      default: "card",
     },
 
     // === NOMBA TOKEN ===

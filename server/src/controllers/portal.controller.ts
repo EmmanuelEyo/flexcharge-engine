@@ -400,3 +400,213 @@ export async function initiateWalletTopUp(
   }
 }
 
+/**
+ * GET /portal/payment-methods
+ * Returns the customer's saved payment methods (cards and mandates).
+ */
+export async function getPaymentMethods(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const customer = await Customer.findOne({
+      _id: req.customerId,
+      tenantId: req.tenantId,
+    });
+    if (!customer) throw new NotFoundError("Customer");
+
+    sendSuccess(res, {
+      paymentMethods: customer.paymentMethods || [],
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /portal/payment-methods/mandate/initiate
+ * Customer initiates a Direct Debit mandate setup.
+ *
+ * The customer provides their bank account details, and Nomba creates
+ * a pending mandate. The customer must then transfer ₦50 to the
+ * NIBSS validation account from the exact account provided.
+ */
+export async function initiateDirectDebitMandate(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { bankCode, accountNumber, phoneNumber, address } = req.body;
+
+    if (!bankCode || !accountNumber || !phoneNumber) {
+      throw new Error("bankCode, accountNumber, and phoneNumber are required");
+    }
+
+    const customer = await Customer.findOne({
+      _id: req.customerId,
+      tenantId: req.tenantId,
+    });
+    if (!customer) throw new NotFoundError("Customer");
+
+    const subscription = await Subscription.findOne({
+      customerId: req.customerId,
+      tenantId: req.tenantId,
+      status: { $in: ["active", "past_due", "paused", "trialing"] },
+    });
+    if (!subscription) throw new NotFoundError("Active Subscription");
+
+    // Generate a numeric-only merchant reference (Nomba requires this)
+    const merchantReference = Date.now().toString() + Math.floor(Math.random() * 10000).toString();
+
+    // Set mandate window: start now, end in 5 years
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setFullYear(endDate.getFullYear() + 5);
+
+    const formatDate = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+    const result = await nombaService.createDirectDebitMandate({
+      customerAccountNumber: accountNumber,
+      bankCode,
+      customerName: customer.name || "Customer",
+      customerEmail: customer.email,
+      customerPhoneNumber: phoneNumber,
+      customerAddress: address || "N/A",
+      merchantReference,
+      startDate: formatDate(startDate),
+      endDate: formatDate(endDate),
+    });
+
+    // Mask the account number for display (show last 4)
+    const masked = "****" + accountNumber.slice(-4);
+
+    customer.paymentMethods.push({
+      methodType: "direct_debit",
+      isDefault: false,
+      mandateId: result.mandateId,
+      bankCode,
+      accountNumberMasked: masked,
+      mandateStatus: "PENDING",
+    });
+    await customer.save();
+
+    logger.info(
+      { customerId: customer._id, mandateId: result.mandateId },
+      "Customer initiated direct debit mandate via portal"
+    );
+
+    sendCreated(res, {
+      mandateId: result.mandateId,
+      status: result.status,
+      validationAccountNumber: result.validationAccountNumber,
+      validationBankName: result.validationBankName,
+      validationAmount: result.validationAmount || "50.00",
+      message:
+        "Please transfer ₦50 to the validation account from the exact bank account you registered. This validates your mandate.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /portal/payment-methods/mandate/verify
+ * Customer confirms they have made the ₦50 validation transfer.
+ * We poll Nomba for the mandate status.
+ *
+ * If ACTIVE + ADVICE_SENT, we mark the mandate as active and optionally
+ * switch the subscription to automatic/direct_debit billing.
+ */
+export async function verifyMandate(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { mandateId, setAsDefault } = req.body;
+
+    if (!mandateId) {
+      throw new Error("mandateId is required");
+    }
+
+    const customer = await Customer.findOne({
+      _id: req.customerId,
+      tenantId: req.tenantId,
+    });
+    if (!customer) throw new NotFoundError("Customer");
+
+    // Check Nomba for the current mandate status
+    const mandateStatus = await nombaService.checkMandateStatus(mandateId);
+
+    // Find the matching payment method entry
+    const pmIndex = customer.paymentMethods.findIndex(
+      (pm) => pm.mandateId === mandateId
+    );
+
+    if (pmIndex === -1) {
+      throw new Error("Mandate not found on this customer profile");
+    }
+
+    // Update the local mandate status
+    customer.paymentMethods[pmIndex]!.mandateStatus =
+      mandateStatus.status as "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
+
+    const isUsable =
+      mandateStatus.status === "ACTIVE" &&
+      mandateStatus.adviceStatus === "ADVICE_SENT";
+
+    if (isUsable && setAsDefault) {
+      // Clear existing defaults
+      customer.paymentMethods.forEach((pm) => {
+        pm.isDefault = false;
+      });
+      customer.paymentMethods[pmIndex]!.isDefault = true;
+
+      // Also switch the subscription to automatic / direct_debit
+      const subscription = await Subscription.findOne({
+        customerId: req.customerId,
+        tenantId: req.tenantId,
+        status: { $in: ["active", "past_due", "paused", "trialing"] },
+      });
+
+      if (subscription) {
+        subscription.renewalMode = "auto";
+        subscription.automaticMethod = "direct_debit";
+        await subscription.save();
+
+        logger.info(
+          { subscriptionId: subscription._id },
+          "Subscription switched to automatic/direct_debit via portal"
+        );
+      }
+    }
+
+    await customer.save();
+
+    logger.info(
+      {
+        customerId: customer._id,
+        mandateId,
+        status: mandateStatus.status,
+        adviceStatus: mandateStatus.adviceStatus,
+        isUsable,
+      },
+      "Customer verified mandate status via portal"
+    );
+
+    sendSuccess(res, {
+      mandateId,
+      status: mandateStatus.status,
+      adviceStatus: mandateStatus.adviceStatus,
+      isUsable,
+      message: isUsable
+        ? "Mandate is active and ready for billing."
+        : "Mandate is not yet active. Please ensure you have transferred ₦50 from the registered account. Bank authorization may take up to 72 hours.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}

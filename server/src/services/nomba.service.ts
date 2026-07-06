@@ -1329,6 +1329,229 @@ class NombaService {
     return { status, message: data.message };
   }
 
+  // ============================================================
+  // DIRECT DEBIT (Bank Mandate Management)
+  // Per Nomba API: /v1/direct-debits
+  // ============================================================
+
+  /**
+   * Create a Direct Debit mandate.
+   *
+   * POST /v1/direct-debits
+   *
+   * The customer must transfer ₦50 to the NIBSS-provided account from the
+   * exact bank account used for the mandate to validate it.
+   * The mandate may take up to 72 hours for bank authorization.
+   *
+   * We always use frequency: "VARIABLE" so FlexCharge retains full billing control.
+   *
+   * @param params - Mandate creation parameters
+   * @returns The mandateId for subsequent status checks and debits
+   */
+  async createDirectDebitMandate(params: {
+    customerAccountNumber: string;
+    bankCode: string;
+    customerName: string;
+    customerEmail: string;
+    customerPhoneNumber: string;
+    customerAddress?: string;
+    merchantReference: string;
+    startDate: string;   // ISO 8601 e.g. "2025-08-29T15:30"
+    endDate: string;     // ISO 8601 e.g. "2026-08-29T15:30"
+    narration?: string;
+  }): Promise<{
+    mandateId: string;
+    status: string;
+    validationAccountNumber?: string;
+    validationBankName?: string;
+    validationAmount?: string;
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.post(
+      "/v1/direct-debits",
+      {
+        customerAccountNumber: params.customerAccountNumber,
+        bankCode: params.bankCode,
+        customerName: params.customerName,
+        customerAddress: params.customerAddress || "N/A",
+        customerAccountName: params.customerName,
+        frequency: "VARIABLE",
+        narration: params.narration || "FlexCharge subscription billing mandate",
+        customerPhoneNumber: params.customerPhoneNumber,
+        merchantReference: params.merchantReference,
+        startDate: params.startDate,
+        endDate: params.endDate,
+        customerEmail: params.customerEmail,
+        startImmediately: true,
+      },
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00" && code !== "200") {
+      throw new Error(
+        `Nomba createDirectDebitMandate failed [${code}]: ${description}`
+      );
+    }
+
+    logger.info(
+      {
+        mandateId: data?.mandateId || data?.id,
+        merchantReference: params.merchantReference,
+        bankCode: params.bankCode,
+      },
+      "Nomba direct debit mandate created"
+    );
+
+    return {
+      mandateId: data?.mandateId || data?.id || "",
+      status: data?.status || "PENDING",
+      validationAccountNumber: data?.validationAccountNumber,
+      validationBankName: data?.validationBankName,
+      validationAmount: data?.validationAmount,
+    };
+  }
+
+  /**
+   * Check the status of a Direct Debit mandate.
+   *
+   * GET /v1/direct-debits/status?mandateId={mandateId}
+   *
+   * Status values: ACTIVE, SUSPENDED, DELETED
+   * Advice status: ADVICE_NOT_SENT, ADVICE_SENT
+   *
+   * IMPORTANT: Only mandates with ACTIVE status AND ADVICE_SENT advice
+   * can be used for debit transactions.
+   */
+  async checkMandateStatus(mandateId: string): Promise<{
+    status: string;
+    adviceStatus: string;
+    mandateId: string;
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.get(
+      "/v1/direct-debits/status",
+      {
+        params: { mandateId },
+        headers: authHeaders,
+      }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00" && code !== "200") {
+      throw new Error(
+        `Nomba checkMandateStatus failed [${code}]: ${description}`
+      );
+    }
+
+    logger.info(
+      {
+        mandateId,
+        status: data?.status,
+        adviceStatus: data?.adviceStatus,
+      },
+      "Nomba mandate status checked"
+    );
+
+    return {
+      status: data?.status || "PENDING",
+      adviceStatus: data?.adviceStatus || "ADVICE_NOT_SENT",
+      mandateId: data?.mandateId || mandateId,
+    };
+  }
+
+  /**
+   * Charge a Direct Debit mandate.
+   *
+   * POST /v1/direct-debits/debit-mandate
+   *
+   * Only mandates with ACTIVE status and ADVICE_SENT can be debited.
+   *
+   * @param mandateId - The mandate ID to debit
+   * @param amount    - Amount in KOBO — we convert to Naira for Nomba
+   */
+  async debitMandate(
+    mandateId: string,
+    amount: number
+  ): Promise<{ success: boolean; message: string }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    // Nomba expects amount as a decimal Naira string (e.g. "110.00")
+    const amountInNaira = (amount / 100).toFixed(2);
+
+    const response = await this.client.post(
+      "/v1/direct-debits/debit-mandate",
+      {
+        mandateId,
+        amount: amountInNaira,
+      },
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    const success = code === "00" || code === "200";
+    const message = data?.message || description || (success ? "Debit successful" : "Debit failed");
+
+    logger.info(
+      {
+        mandateId,
+        amountNaira: amountInNaira,
+        code,
+        success,
+        message,
+      },
+      "Nomba direct debit mandate charged"
+    );
+
+    return { success, message };
+  }
+
+  /**
+   * Update the status of a Direct Debit mandate (SUSPEND or reactivate).
+   *
+   * PUT /v1/direct-debits/update-status
+   *
+   * @param mandateId - The mandate to update
+   * @param status    - New status: "SUSPEND" to pause, "ACTIVE" to resume
+   */
+  async updateMandateStatus(
+    mandateId: string,
+    status: "SUSPEND" | "ACTIVE" | "DELETE"
+  ): Promise<{ success: boolean; message: string }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await this.client.put(
+      "/v1/direct-debits/update-status",
+      {
+        mandateId,
+        status,
+      },
+      { headers: authHeaders }
+    );
+
+    const { code, description, data } = response.data;
+
+    const success = code === "00" || code === "200";
+    const message = data?.message || description || "Status updated";
+
+    logger.info(
+      {
+        mandateId,
+        newStatus: status,
+        code,
+        success,
+      },
+      "Nomba mandate status updated"
+    );
+
+    return { success, message };
+  }
+
   // UTILITY — for testing and health checks
   // ============================================================
 
@@ -1358,3 +1581,4 @@ class NombaService {
 
 // Export a singleton instance
 export const nombaService = new NombaService();
+
