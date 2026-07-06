@@ -13,6 +13,7 @@ import { defineDailyAnalyticsJob, DAILY_ANALYTICS_JOB_NAME } from "../jobs/recor
 import { defineCleanupPendingSubscriptionsJob, CLEANUP_PENDING_SUBS_JOB_NAME } from "../jobs/cleanupPendingSubscriptions.js";
 import { defineScheduledPayoutsJob, SCHEDULED_PAYOUTS_JOB_NAME } from "../jobs/processScheduledPayouts.js";
 import { defineMandateSyncJob, MANDATE_SYNC_JOB_NAME } from "../jobs/mandateSync.js";
+import { registerCardExpiryReminderJob, CARD_EXPIRY_REMINDER_JOB_NAME } from "../jobs/cardExpiryReminder.js";
 
 /**
  * Agenda configuration — MongoDB-backed job scheduler.
@@ -54,6 +55,7 @@ export function getAgenda(): Agenda {
     defineCleanupPendingSubscriptionsJob(agenda);
     defineScheduledPayoutsJob(agenda);
     defineMandateSyncJob(agenda);
+    registerCardExpiryReminderJob(agenda);
 
     // Error handling
     agenda.on("error", (err) => {
@@ -137,6 +139,9 @@ export async function startAgenda(): Promise<void> {
 
   // Process scheduled platform payouts daily at midnight UTC
   await agendaInstance.every("0 0 * * *", SCHEDULED_PAYOUTS_JOB_NAME);
+
+  // Send card expiry reminders daily at 9:00 AM UTC
+  await agendaInstance.every("0 9 * * *", CARD_EXPIRY_REMINDER_JOB_NAME);
 
   logger.info("Agenda scheduler started with recurring jobs");
 }

@@ -21,6 +21,8 @@ export interface IPaymentMethod {
   tokenKey?: string;
   cardLast4?: string;
   cardBrand?: string;
+  tokenExpirationDate?: string; // "MM/YY" format
+  expiryReminderSent?: boolean;
 
   // Direct Debit fields
   mandateId?: string;
@@ -57,6 +59,8 @@ const paymentMethodSchema = new Schema<IPaymentMethod>(
     tokenKey: { type: String, trim: true },
     cardLast4: { type: String, trim: true },
     cardBrand: { type: String, trim: true },
+    tokenExpirationDate: { type: String, trim: true },
+    expiryReminderSent: { type: Boolean, default: false },
 
     // Direct Debit fields
     mandateId: { type: String, trim: true },
