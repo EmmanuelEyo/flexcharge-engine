@@ -125,7 +125,11 @@ export async function repairMissedWalletAutoTopups(): Promise<{
 
       if (shouldMarkPaid) {
         invoice.status = "paid";
-        invoice.paidAt = invoice.paidAt ?? new Date();
+        
+        const txDateStr = checkoutTransaction.transactionDetails?.transactionDate;
+        const actualPaidDate = txDateStr ? new Date(txDateStr) : new Date();
+        
+        invoice.paidAt = invoice.paidAt ?? actualPaidDate;
         invoice.nombaTransactionId = invoice.nombaTransactionId ?? orderReference;
         if (checkoutTransaction.transactionDetails?.paymentReference) {
           invoice.nombaTransactionRef =
