@@ -134,6 +134,25 @@ test("Subscription Controller", async (t) => {
     assert.ok(res.body.data.canceledAt, "Should have a canceledAt date");
   });
 
+  await t.test("POST /subscriptions/:id/cancel - defaults to period-end cancellation without body", async () => {
+    const subscription = await Subscription.create({
+      tenantId,
+      customerId,
+      planId,
+      status: "active",
+      currentPeriodEnd: new Date(Date.now() + 86400000),
+    });
+
+    const res = await request(app)
+      .post(`/api/subscriptions/${subscription._id}/cancel`)
+      .set("x-api-key", apiKeyStr);
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.success, true);
+    assert.strictEqual(res.body.data.cancelAtPeriodEnd, true);
+    assert.strictEqual(res.body.data.status, "active");
+  });
+
   await t.test("State Machine Validation - prevents invalid transitions", async () => {
     // pending -> past_due is INVALID
     const subscription = await Subscription.create({

@@ -29,16 +29,17 @@ export const createSubscriptionSchema = z.object({
 /**
  * Schema for POST /subscriptions/:id/cancel — cancel a subscription.
  */
-export const cancelSubscriptionSchema = z.object({
-  cancelAtPeriodEnd: z
-    .boolean()
-    .default(true),
-  cancellationReason: z
-    .string()
-    .max(500, "Cancellation reason cannot exceed 500 characters")
-    .trim()
-    .optional(),
-});
+export const cancelSubscriptionSchema = z.preprocess(
+  (value) => value ?? {},
+  z.object({
+    cancelAtPeriodEnd: z.boolean().default(true),
+    cancellationReason: z
+      .string()
+      .max(500, "Cancellation reason cannot exceed 500 characters")
+      .trim()
+      .optional(),
+  })
+);
 
 /**
  * Schema for POST /subscriptions/:id/change-plan — upgrade/downgrade.
