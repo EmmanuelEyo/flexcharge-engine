@@ -139,18 +139,6 @@ export default function DashboardLayout({ children, }: {
         </div>
 
         <div className="flex items-center gap-3 ml-auto">
-          <button className="relative text-slate-500 hover:text-[#4F46E5] transition-colors p-1 rounded-full">
-            <span className="material-symbols-outlined text-[22px] leading-none">
-              notifications
-            </span>
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-          </button>
-
-          <button className="hidden sm:block text-slate-500 hover:text-[#4F46E5] transition-colors p-1 rounded-full">
-            <span className="material-symbols-outlined text-[22px] leading-none">
-              help_outline
-            </span>
-          </button>
 
           <div className="relative">
             <div 
