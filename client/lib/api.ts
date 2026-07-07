@@ -37,6 +37,15 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error?.response?.status === 401 && typeof window !== "undefined") {
+      localStorage.removeItem("fc_token");
+      localStorage.removeItem("fc_user");
+      import("next-auth/react").then(({ signOut }) => {
+        signOut({ callbackUrl: "/login" });
+      }).catch(() => {
+        window.location.href = "/login";
+      });
+    }
     const message = error?.response?.data?.error ?? error?.response?.data?.message ?? error.message ?? "An error occurred";
     return Promise.reject(new Error(message));
   }
