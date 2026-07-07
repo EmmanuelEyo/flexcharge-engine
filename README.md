@@ -2,6 +2,13 @@
 
 FlexCharge is a subscription billing and wallet engine built to sit on top of a payment provider while keeping the merchant experience focused on business state, not gateway mechanics.
 
+## Demo Credentials
+
+Use the following seeded credentials to explore the dashboard during judging:
+
+- Email: `admin@acme.com`
+- Password: `SecurePassword@12345`
+
 The platform lets a business:
 
 - create and manage plans in the dashboard,
@@ -237,12 +244,6 @@ Plans and ledger configuration are managed in the platform dashboard, not by thi
 
 For the full API reference, see the developer docs in the app.
 
-## Demo Credentials
-
-Use the following seeded credentials to explore the dashboard during judging:
-
-- Email: `admin@acme.com`
-- Password: `SecurePassword@12345`
 
 ## Running Locally
 
