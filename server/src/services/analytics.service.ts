@@ -3,6 +3,7 @@ import { Subscription } from "../models/Subscription.js";
 import { Invoice } from "../models/Invoice.js";
 import { WalletTransaction } from "../models/WalletTransaction.js";
 import { AnalyticsSnapshot } from "../models/AnalyticsSnapshot.js";
+import type { PlanInterval } from "../types/subscription.types.js";
 
 export interface CurrentMetrics {
   mrr: number; // in Kobo
@@ -17,86 +18,58 @@ export interface RevenueMetrics {
   failedRevenue: number;
 }
 
+const AVERAGE_DAYS_PER_MONTH = 365 / 12;
+
+function getMonthlyEquivalentKobo(plan: {
+  amount: number;
+  interval: string;
+  intervalDays?: number | null;
+}): number {
+  switch (plan.interval as PlanInterval | "daily") {
+    case "monthly":
+      return plan.amount;
+    case "yearly":
+      return plan.amount / 12;
+    case "quarterly":
+      return plan.amount / 3;
+    case "weekly":
+      return plan.amount * (AVERAGE_DAYS_PER_MONTH / 7);
+    case "daily":
+      return plan.amount * AVERAGE_DAYS_PER_MONTH;
+    case "custom": {
+      const days = plan.intervalDays ?? 0;
+      if (days <= 0) return 0;
+      return plan.amount * (AVERAGE_DAYS_PER_MONTH / days);
+    }
+    default:
+      return 0;
+  }
+}
+
 export const analyticsService = {
   /**
-   * Calculate current MRR, ARR, Active Subs, and ARPU using MongoDB aggregation.
+   * Calculate current MRR, ARR, Active Subs, and ARPU from active subscriptions.
    */
   async getCurrentMetrics(tenantId: string | Types.ObjectId): Promise<CurrentMetrics> {
     const tid = new Types.ObjectId(tenantId);
 
-    const mrrPipeline = [
-      {
-        $match: {
-          tenantId: tid,
-          status: "active",
-        },
-      },
-      {
-        $lookup: {
-          from: "plans", // Ensure this matches the MongoDB collection name (usually lowercase plural)
-          localField: "planId",
-          foreignField: "_id",
-          as: "plan",
-        },
-      },
-      {
-        $unwind: "$plan",
-      },
-      {
-        $addFields: {
-          normalizedMRR: {
-            $switch: {
-              branches: [
-                {
-                  case: { $eq: ["$plan.interval", "monthly"] },
-                  then: "$plan.amount",
-                },
-                {
-                  case: { $eq: ["$plan.interval", "yearly"] },
-                  then: { $divide: ["$plan.amount", 12] },
-                },
-                {
-                  case: { $eq: ["$plan.interval", "quarterly"] },
-                  then: { $divide: ["$plan.amount", 3] },
-                },
-                {
-                  case: { $eq: ["$plan.interval", "weekly"] },
-                  then: { $multiply: [{ $divide: ["$plan.amount", 7] }, 30.4167] },
-                },
-                {
-                  case: { $eq: ["$plan.interval", "custom"] },
-                  then: {
-                    $cond: [
-                      { $gt: ["$plan.intervalDays", 0] },
-                      { $multiply: ["$plan.amount", { $divide: [30.4167, "$plan.intervalDays"] }] },
-                      0
-                    ]
-                  }
-                },
-              ],
-              default: 0,
-            },
-          },
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalMRR: { $sum: "$normalizedMRR" },
-          activeSubscribers: { $sum: 1 },
-        },
-      },
-    ];
+    const activeSubscriptions = await Subscription.find({
+      tenantId: tid,
+      status: "active",
+    })
+      .populate("planId", "amount interval intervalDays")
+      .lean();
 
-    const result = await Subscription.aggregate(mrrPipeline);
-    
-    let mrr = 0;
-    let activeSubscribers = 0;
+    const mrr = Math.round(
+      activeSubscriptions.reduce((total, sub: any) => {
+        const plan = sub.planId;
+        if (!plan) return total;
 
-    if (result.length > 0) {
-      mrr = Math.round(result[0].totalMRR);
-      activeSubscribers = result[0].activeSubscribers;
-    }
+        return total + getMonthlyEquivalentKobo(plan);
+      }, 0)
+    );
+
+    const activeSubscribers = activeSubscriptions.length;
 
     const arr = mrr * 12;
     const arpu = activeSubscribers > 0 ? Math.round(mrr / activeSubscribers) : 0;

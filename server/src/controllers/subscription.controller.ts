@@ -542,8 +542,9 @@ export async function changeSubscriptionPlan(
 
     let paymentStatus = "paid";
     let nombaOrderRef;
+    const bypassPayment = !!(input as any).bypassPayment;
 
-    if (result.isUpgrade && result.amountDue > 0) {
+    if (result.isUpgrade && result.amountDue > 0 && !bypassPayment) {
       if (!subscription.tokenKey || !nombaService.isConfigured()) {
         throw new AppError("Cannot process upgrade without a valid payment token", 400);
       }
@@ -566,6 +567,7 @@ export async function changeSubscriptionPlan(
     // Process invoice if there's an amount due
     let invoice;
     if (result.amountDue > 0) {
+      const descriptionSuffix = bypassPayment ? " (Admin Bypassed / Offline Payment)" : "";
       invoice = await Invoice.create({
         tenantId: subscription.tenantId,
         customerId: subscription.customerId,
@@ -575,7 +577,7 @@ export async function changeSubscriptionPlan(
         status: paymentStatus as any,
         nombaOrderReference: nombaOrderRef,
         isRenewal: false,
-        description: `Plan upgrade from ${subscription.planId} to ${newPlan._id}`,
+        description: `Plan upgrade from ${subscription.planId} to ${newPlan._id}${descriptionSuffix}`,
       });
     }
 

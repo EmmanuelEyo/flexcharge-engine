@@ -49,6 +49,7 @@ export const changePlanSchema = z.object({
     .min(1, "New Plan ID is required")
     .regex(/^[a-f\d]{24}$/i, "Invalid Plan ID format"),
   changeDate: z.string().datetime().optional(),
+  bypassPayment: z.boolean().optional(),
 });
 
 /**

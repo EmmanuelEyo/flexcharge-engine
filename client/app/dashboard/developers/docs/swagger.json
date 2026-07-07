@@ -373,49 +373,6 @@
         }
       }
     },
-    "/subscriptions/{id}/change-plan": {
-      "post": {
-        "tags": ["Subscriptions"],
-        "summary": "Change subscription plan (Synchronous)",
-        "security": [
-          {
-            "apiKeyAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangePlan"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Subscription plan changed successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ItemResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/subscriptions/{id}/change-plan-checkout": {
       "post": {
         "tags": ["Subscriptions"],

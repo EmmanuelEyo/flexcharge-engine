@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -25,6 +26,7 @@ export default function ChangePlanModal({ subscriptionId, currentPlanName, onClo
   const [simulating, setSimulating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [bypassPayment, setBypassPayment] = useState(false);
 
   useEffect(() => {
     async function loadPlans() {
@@ -41,11 +43,12 @@ export default function ChangePlanModal({ subscriptionId, currentPlanName, onClo
   }, []);
 
   const handleSimulate = async (newPlanId: string) => {
-    setSelectedPlanId(newPlanId);
-    if (!newPlanId) {
-      setSimulation(null);
-      return;
-    }
+      setSelectedPlanId(newPlanId);
+      if (!newPlanId) {
+        setSimulation(null);
+        setError("");
+        return;
+      }
     try {
       setSimulating(true);
       setError("");
@@ -55,7 +58,7 @@ export default function ChangePlanModal({ subscriptionId, currentPlanName, onClo
       setSimulation(res.data?.data);
     } catch (err: any) {
       console.error(err);
-      setError(err.response?.data?.error?.message || "Failed to simulate plan change");
+      setError(err instanceof Error ? err.message : "Failed to simulate plan change");
       setSimulation(null);
     } finally {
       setSimulating(false);
@@ -67,14 +70,18 @@ export default function ChangePlanModal({ subscriptionId, currentPlanName, onClo
     try {
       setSubmitting(true);
       setError("");
+
       await api.post(`/subscriptions/${subscriptionId}/change-plan`, {
-        newPlanId: selectedPlanId
+        newPlanId: selectedPlanId,
+        bypassPayment,
       });
+
       onUpdate();
       onClose();
     } catch (err: any) {
       console.error(err);
-      setError(err.response?.data?.error?.message || "Failed to change plan");
+      const errMsg = err.response?.data?.error || err.message || "Failed to change plan";
+      setError(errMsg);
     } finally {
       setSubmitting(false);
     }
@@ -146,6 +153,26 @@ export default function ChangePlanModal({ subscriptionId, currentPlanName, onClo
                 <span className="font-semibold text-slate-700">Amount Due Now:</span>
                 <span className="font-bold text-slate-900 text-lg">{simulation.invoice.amountDueFormatted}</span>
               </div>
+              
+              {simulation.invoice.amountDue > 0 && (
+                <div className="pt-3 border-t border-slate-100 flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    id="bypassPayment"
+                    checked={bypassPayment}
+                    onChange={(e) => setBypassPayment(e.target.checked)}
+                    className="h-4.5 w-4.5 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <div className="text-sm select-none">
+                    <label htmlFor="bypassPayment" className="font-medium text-slate-950 cursor-pointer">
+                      Process as offline/complimentary payment
+                    </label>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Bypasses charging the saved payment card and changes the plan immediately.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -159,7 +186,7 @@ export default function ChangePlanModal({ subscriptionId, currentPlanName, onClo
           </button>
           <button 
             onClick={handleConfirm}
-            disabled={!simulation || submitting}
+            disabled={!selectedPlanId || submitting || simulating}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {submitting && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}

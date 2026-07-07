@@ -160,13 +160,6 @@ const endpointGroups: Array<{ title: string; items: EndpointDoc[] }> = [
       },
       {
         method: "POST",
-        route: "/api/subscriptions/:id/change-plan",
-        purpose: "Upgrade or downgrade a subscription synchronously.",
-        inputs: "Path: id; body: newPlanId, changeDate?",
-        why: "Needed for proration and plan migration flows. Upgrades require a saved card.",
-      },
-      {
-        method: "POST",
         route: "/api/subscriptions/:id/change-plan-checkout",
         purpose: "Generate an async checkout link for a plan upgrade.",
         inputs: "Path: id; body: newPlanId",
