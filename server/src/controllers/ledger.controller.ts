@@ -124,6 +124,47 @@ export async function getBanksList(req: Request, res: Response): Promise<void> {
   }
 }
 
+/**
+ * GET /ledger/dashboard/lookup-bank?bankCode=...&accountNumber=...
+ * Look up a bank account name via Nomba before saving.
+ * Returns the resolved account name so the frontend can display it
+ * for user confirmation in the modal.
+ */
+export async function lookupBankAccount(req: Request, res: Response): Promise<void> {
+  try {
+    const { bankCode, accountNumber } = req.query;
+
+    if (!bankCode || !accountNumber || typeof bankCode !== "string" || typeof accountNumber !== "string") {
+      res.status(400).json({ error: "bankCode and accountNumber query parameters are required" });
+      return;
+    }
+
+    if (accountNumber.length !== 10 || !/^\d{10}$/.test(accountNumber)) {
+      res.status(400).json({ error: "Account number must be exactly 10 digits" });
+      return;
+    }
+
+    const result = await nombaService.lookupBankAccount(bankCode, accountNumber);
+
+    if (!result.accountName) {
+      res.status(404).json({ error: "Could not resolve account name for the provided details" });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        accountName: result.accountName,
+        bankCode,
+        accountNumber,
+      },
+    });
+  } catch (error) {
+    logger.error({ error, query: req.query }, "Error looking up bank account");
+    res.status(500).json({ error: error instanceof Error ? error.message : "Failed to look up bank account" });
+  }
+}
+
 // ============================================================
 // WITHDRAWALS
 // ============================================================

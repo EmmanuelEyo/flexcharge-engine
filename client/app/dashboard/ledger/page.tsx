@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -35,6 +36,9 @@ export default function LedgerPage() {
   const [accountNumber, setAccountNumber] = useState("");
   const [bankLoading, setBankLoading] = useState(false);
   const [banks, setBanks] = useState<{ value: string; label: string }[]>([]);
+  const [resolvedAccountName, setResolvedAccountName] = useState("");
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState("");
 
   const [payoutSettings, setPayoutSettings] = useState<PayoutSettings>({
     payoutSchedule: "weekly",
@@ -89,13 +93,62 @@ export default function LedgerPage() {
 
   const handleOpenBankModal = () => {
     setIsBankModalOpen(true);
+    setResolvedAccountName("");
+    setLookupError("");
+    setBankCode("");
+    setAccountNumber("");
     if (banks.length === 0) {
       fetchBanks();
     }
   };
 
+  const handleLookupBank = async (code: string, accNum: string) => {
+    // Only trigger lookup when both fields are filled and account number is 10 digits
+    if (!code || !accNum || accNum.length !== 10) {
+      setResolvedAccountName("");
+      setLookupError("");
+      return;
+    }
+
+    try {
+      setLookupLoading(true);
+      setLookupError("");
+      setResolvedAccountName("");
+      const res = await api.get(`/ledger/dashboard/lookup-bank?bankCode=${code}&accountNumber=${accNum}`);
+      if (res.data?.data?.accountName) {
+        setResolvedAccountName(res.data.data.accountName);
+      } else {
+        setLookupError("Could not resolve account name");
+      }
+    } catch (err: any) {
+      setLookupError(err.response?.data?.error || "Failed to verify account");
+      setResolvedAccountName("");
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  const handleBankCodeChange = (val: string) => {
+    setBankCode(val);
+    handleLookupBank(val, accountNumber);
+  };
+
+  const handleAccountNumberChange = (val: string) => {
+    setAccountNumber(val);
+    if (val.length === 10) {
+      handleLookupBank(bankCode, val);
+    } else {
+      setResolvedAccountName("");
+      setLookupError("");
+    }
+  };
+
   const handleSetBank = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!resolvedAccountName) {
+      toast.error("Please wait for account verification to complete");
+      return;
+    }
     try {
       setBankLoading(true);
       setError("");
@@ -452,7 +505,7 @@ export default function LedgerPage() {
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Bank</label>
                   <Select
                     value={bankCode}
-                    onChange={(val) => setBankCode(val)}
+                    onChange={handleBankCodeChange}
                     options={banks}
                     placeholder={banks.length === 0 ? "Loading banks..." : "Select a bank"}
                     searchable={true}
@@ -463,20 +516,41 @@ export default function LedgerPage() {
                   <input
                     type="text"
                     value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value)}
+                    onChange={(e) => handleAccountNumberChange(e.target.value.replace(/\D/g, "").slice(0, 10))}
                     required
+                    maxLength={10}
                     placeholder="10-digit account number"
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all"
                   />
                 </div>
+
+                {/* Account Name Resolution */}
+                {lookupLoading && (
+                  <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                    <span className="text-sm text-slate-500">Verifying account...</span>
+                  </div>
+                )}
+                {lookupError && (
+                  <div className="p-3 bg-red-50 rounded-xl border border-red-100 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-red-500 text-[18px]">error</span>
+                    <span className="text-sm text-red-700">{lookupError}</span>
+                  </div>
+                )}
+                {resolvedAccountName && (
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                    <p className="text-xs font-medium text-emerald-600 mb-0.5">Account Name (Verified)</p>
+                    <p className="text-base font-bold text-emerald-800">{resolvedAccountName}</p>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-3 justify-end">
                 <Button variant="secondary" onClick={() => setIsBankModalOpen(false)} type="button">
                   Cancel
                 </Button>
-                <Button type="submit" disabled={bankLoading}>
-                  {bankLoading ? "Verifying..." : "Save Account"}
+                <Button type="submit" disabled={bankLoading || lookupLoading || !resolvedAccountName}>
+                  {bankLoading ? "Saving..." : "Confirm & Save"}
                 </Button>
               </div>
             </form>

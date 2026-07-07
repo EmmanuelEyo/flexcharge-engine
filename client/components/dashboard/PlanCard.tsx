@@ -113,17 +113,29 @@ export default function PlanCard({ plan, onEdit, onCopyId, onToggleStatus, }: Pl
       </div>
 
       <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 flex items-center gap-2">
-        <button onClick={() => onEdit?.(plan)} className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-[#4F46E5] transition-colors px-2.5 py-1.5 rounded-lg hover:bg-indigo-50">
-          <span className="material-symbols-outlined text-[15px] leading-none">edit</span>
-          Edit
+        <button 
+          onClick={() => onEdit?.(plan)} 
+          className="flex items-center justify-center text-slate-600 hover:text-[#4F46E5] transition-colors p-2 rounded-lg hover:bg-indigo-50"
+          title="Edit Plan"
+          aria-label="Edit Plan"
+        >
+          <span className="material-symbols-outlined text-[18px] leading-none">edit</span>
         </button>
-        <button onClick={() => onCopyId?.(plan.id)} className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-[#4F46E5] transition-colors px-2.5 py-1.5 rounded-lg hover:bg-indigo-50">
-          <span className="material-symbols-outlined text-[15px] leading-none">content_copy</span>
-          Copy ID
+        <button 
+          onClick={() => onCopyId?.(plan.id)} 
+          className="flex items-center justify-center text-slate-600 hover:text-[#4F46E5] transition-colors p-2 rounded-lg hover:bg-indigo-50"
+          title="Copy Plan ID"
+          aria-label="Copy Plan ID"
+        >
+          <span className="material-symbols-outlined text-[18px] leading-none">content_copy</span>
         </button>
-        <button onClick={() => onToggleStatus?.(plan)} className={`flex items-center gap-1.5 text-xs font-medium transition-colors px-2.5 py-1.5 rounded-lg ml-auto ${isActive ? "text-slate-500 hover:text-red-600 hover:bg-red-50" : "text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"}`}>
-          <span className="material-symbols-outlined text-[15px] leading-none"> {isActive ? "pause_circle" : "play_circle"}</span>
-          {isActive ? "Deactivate" : "Activate"}
+        <button 
+          onClick={() => onToggleStatus?.(plan)} 
+          className={`flex items-center justify-center transition-colors p-2 rounded-lg ml-auto ${isActive ? "text-slate-500 hover:text-red-600 hover:bg-red-50" : "text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"}`}
+          title={isActive ? "Deactivate Plan" : "Activate Plan"}
+          aria-label={isActive ? "Deactivate Plan" : "Activate Plan"}
+        >
+          <span className="material-symbols-outlined text-[18px] leading-none"> {isActive ? "pause_circle" : "play_circle"}</span>
         </button>
       </div>
     </div>

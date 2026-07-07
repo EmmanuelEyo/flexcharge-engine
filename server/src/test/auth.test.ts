@@ -108,7 +108,7 @@ test("API Key Generation & Usage", async () => {
   const rawKey = keyRes.body.data.rawKey;
   const keyId = keyRes.body.data.apiKey._id;
   assert.ok(rawKey);
-  assert.ok(rawKey.startsWith("fck_live_"));
+  assert.ok(rawKey.startsWith("flx_live_"));
 
   // Check database storage security (raw key not stored)
   const storedKey = await ApiKey.findById(keyId);

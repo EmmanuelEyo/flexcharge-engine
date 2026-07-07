@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs";
  * - The raw API key is shown to the tenant ONLY ONCE at creation time.
  * - We store a bcrypt hash of the key. On every request, we hash the
  *   incoming key and compare against stored hashes.
- * - The `prefix` (first 8 chars, e.g. "fck_live_") is stored in plaintext
+ * - The `prefix` (first 8 chars, e.g. "flx_live_") is stored in plaintext
  *   for identification and quick lookup.
  *
  * Per implementation_plan.md §3.2
@@ -82,7 +82,7 @@ apiKeySchema.statics.generateKey = async function (
 ): Promise<{ rawKey: string; apiKey: IApiKey }> {
   const crypto = await import("crypto");
   const rawSecret = crypto.randomBytes(32).toString("hex");
-  const prefix = "fck_live_";
+  const prefix = "flx_live_";
   const rawKey = `${prefix}${rawSecret}`;
 
   const keyHash = await bcrypt.hash(rawKey, 10);
@@ -104,8 +104,8 @@ apiKeySchema.statics.generateKey = async function (
 apiKeySchema.statics.findByRawKey = async function (
   rawKey: string
 ): Promise<IApiKey | null> {
-  // Extract the prefix (everything up to and including "fck_live_")
-  const prefix = rawKey.substring(0, 9); // "fck_live_"
+  // Extract the prefix (everything up to and including "flx_live_")
+  const prefix = rawKey.substring(0, 9); // "flx_live_"
 
   // Find all active keys with this prefix
   const candidates = await this.find({
