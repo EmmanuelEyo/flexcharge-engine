@@ -84,6 +84,18 @@ export default function WalletsPage() {
         <Button onClick={openCreateModal}>New Wallet</Button>
       </div>
 
+      <div className="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-5 flex gap-4 items-start shadow-sm max-w-4xl">
+        <div className="p-2.5 bg-indigo-100/70 rounded-xl text-[#4F46E5] flex-shrink-0 flex items-center justify-center">
+          <span className="material-symbols-outlined text-[22px]">info</span>
+        </div>
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-indigo-900">Prepaid Credits & Digital Wallets</h3>
+          <p className="text-sm text-indigo-950/80 leading-relaxed">
+            FlexCharge Customer Wallets are versatile ledgers. Use them like a <strong>Prepaid Credit System</strong> for SaaS and mobile APIs (metering and deducting balances per usage action), or deploy them as a <strong>Digital Wallet</strong> inside commercial platforms so users can store funds, manage auto-refills, and settle purchases in NGN smoothly.
+          </p>
+        </div>
+      </div>
+
       {error && (
         <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-xl flex items-center border border-red-100">
           <span className="material-symbols-outlined mr-2">error</span>

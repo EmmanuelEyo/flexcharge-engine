@@ -157,7 +157,17 @@ export async function getPortalInvoices(
     const invoices = await Invoice.find({
       customerId: req.customerId,
       tenantId: req.tenantId,
-    }).sort({ createdAt: -1 });
+    })
+      .populate({
+        path: "subscriptionId",
+        select: "status planId",
+        populate: {
+          path: "planId",
+          select: "name",
+        },
+      })
+      .populate("tenantId", "name logoUrl")
+      .sort({ createdAt: -1 });
 
     sendSuccess(res, invoices);
   } catch (error) {

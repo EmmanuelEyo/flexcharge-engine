@@ -230,12 +230,21 @@ export default function LedgerPage() {
         {/* Configuration Panel */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
            <h3 className="text-xl font-bold tracking-tight text-slate-900 mb-6">Automated Payout Settings</h3>
+           
+           {!data?.settlementAccount && (
+             <div className="mb-5 p-4 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl flex items-start gap-2.5">
+               <span className="material-symbols-outlined text-[20px] flex-shrink-0 mt-0.5">warning</span>
+               <span>Please configure your settlement bank account above to unlock automated payout schedules.</span>
+             </div>
+           )}
+
            <form onSubmit={handleSaveSettings} className="space-y-5">
               <div>
                  <label className="block text-sm font-medium text-slate-700 mb-2">Payout Schedule</label>
                  <Select 
                    value={payoutSettings.payoutSchedule}
                    onChange={(val) => setPayoutSettings({...payoutSettings, payoutSchedule: val})}
+                   disabled={!data?.settlementAccount}
                    options={[
                      { value: "daily", label: "Daily" },
                      { value: "weekly", label: "Weekly" },
@@ -250,6 +259,7 @@ export default function LedgerPage() {
                    <Select 
                      value={payoutSettings.payoutDayOfWeek}
                      onChange={(val) => setPayoutSettings({...payoutSettings, payoutDayOfWeek: Number(val)})}
+                     disabled={!data?.settlementAccount}
                      options={[
                        { value: 1, label: "Monday" },
                        { value: 2, label: "Tuesday" },
@@ -272,7 +282,8 @@ export default function LedgerPage() {
                      max="31"
                      value={payoutSettings.payoutDayOfMonth}
                      onChange={(e) => setPayoutSettings({...payoutSettings, payoutDayOfMonth: parseInt(e.target.value)})}
-                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all"
+                     disabled={!data?.settlementAccount}
+                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all disabled:opacity-60"
                    />
                 </div>
               )}
@@ -292,13 +303,14 @@ export default function LedgerPage() {
                            setPayoutSettings({...payoutSettings, payoutThreshold: val * 100});
                         }
                      }}
-                     className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all"
+                     disabled={!data?.settlementAccount}
+                     className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all disabled:opacity-60"
                    />
                  </div>
               </div>
 
               <div className="pt-2">
-                <Button type="submit" disabled={settingsLoading} className="w-full justify-center">
+                <Button type="submit" disabled={settingsLoading || !data?.settlementAccount} className="w-full justify-center">
                   {settingsLoading ? "Saving..." : "Save Settings"}
                 </Button>
               </div>

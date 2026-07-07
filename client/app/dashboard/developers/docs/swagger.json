@@ -1,1151 +1,55 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "FlexCharge Subscription Engine API",
-    "description": "API documentation for the FlexCharge Subscription Engine. Supports Tenant Identity, API Key Authentication, Plan and Customer management, Webhook configs, and Customer Portal verification.",
-    "version": "1.0.0"
+    "title": "FlexCharge Public Billing API",
+    "version": "1.0.0",
+    "description": "Lean public API surface for third-party billing integrations. Plan setup and ledger setup happen in the dashboard UI. The API is used for customer provisioning, subscriptions, wallet credits, and hosted portal sessions."
   },
   "servers": [
     {
       "url": "http://localhost:7000/api",
-      "description": "Local Development Server"
+      "description": "Local Development"
+    },
+    {
+      "url": "https://api.flexcharge.com/api",
+      "description": "Production (Mock)"
+    }
+  ],
+  "security": [
+    {
+      "apiKeyAuth": []
     }
   ],
   "paths": {
-    "/invoices": {
-      "get": {
-        "summary": "List Invoices",
-        "description": "Retrieve all invoices belonging to the tenant. Supports filtering by status, customerId, or subscriptionId.",
-        "tags": [
-          "Invoices"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "status",
-            "in": "query",
-            "description": "Filter by invoice status (pending, paid, failed)",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "customerId",
-            "in": "query",
-            "description": "Filter by Customer ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "subscriptionId",
-            "in": "query",
-            "description": "Filter by Subscription ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of invoices retrieved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Invoice"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/invoices/order/{orderReference}": {
-      "get": {
-        "summary": "Get Nomba checkout order details by order reference",
-        "description": "Fetches a single checkout order from the Nomba API using the order reference returned when the order was created, and merges it with the corresponding FlexCharge invoice record.\n\n**Flow:**\n1. Verifies the order reference belongs to the authenticated tenant (ownership check via local Invoice lookup)\n2. Calls `GET https://api.nomba.com/v1/checkout/order/{orderReference}` with a valid OAuth2 bearer token\n3. Returns a merged payload containing both local audit-trail data and live Nomba business/customer metadata\n\n**Graceful degradation:** If the Nomba API is unavailable, the endpoint returns the local invoice data with a `warning` field instead of failing.",
-        "tags": [
-          "Invoices"
-        ],
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "orderReference",
-            "in": "path",
-            "description": "The Nomba order reference UUID (stored as `nombaOrderReference` on the Invoice). This is the reference returned when the checkout order was created.",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Merged FlexCharge invoice + live Nomba checkout order details",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "invoice": {
-                          "description": "The FlexCharge internal invoice record (financial audit trail)",
-                          "$ref": "#/components/schemas/Invoice"
-                        },
-                        "nombaOrder": {
-                          "description": "Live Nomba checkout order details. null if Nomba is unreachable.",
-                          "nullable": true,
-                          "type": "object",
-                          "properties": {
-                            "orderId": {
-                              "type": "string",
-                              "description": "Unique order ID generated by Nomba",
-                              "example": "56e03654-0c32-4d3e-bbd6-a9df22994a12"
-                            },
-                            "orderReference": {
-                              "type": "string",
-                              "description": "The merchant-supplied order reference",
-                              "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58"
-                            },
-                            "customerId": {
-                              "type": "string",
-                              "description": "Customer ID on Nomba",
-                              "example": "762878332454"
-                            },
-                            "accountId": {
-                              "type": "string",
-                              "description": "The Nomba sub-account whose wallet is credited on payment",
-                              "example": "56e03654-0c32-4d3e-bbd6-a9df22994a12"
-                            },
-                            "callbackUrl": {
-                              "type": "string",
-                              "description": "Merchant redirect URL after payment",
-                              "example": "https://merchant.com/callback"
-                            },
-                            "customerEmail": {
-                              "type": "string",
-                              "format": "email",
-                              "example": "customer@example.com"
-                            },
-                            "amountKobo": {
-                              "type": "integer",
-                              "description": "Amount in Kobo (Nomba decimal converted to our internal integer representation)",
-                              "example": 1000000
-                            },
-                            "amountNaira": {
-                              "type": "string",
-                              "description": "Original amount string from Nomba in Naira (decimal)",
-                              "example": "10000.00"
-                            },
-                            "currency": {
-                              "type": "string",
-                              "enum": [
-                                "NGN"
-                              ],
-                              "example": "NGN"
-                            },
-                            "businessName": {
-                              "type": "string",
-                              "example": "FlexCharge Ltd"
-                            },
-                            "businessEmail": {
-                              "type": "string",
-                              "format": "email",
-                              "example": "billing@flexcharge.io"
-                            },
-                            "businessLogo": {
-                              "type": "string",
-                              "description": "URL to the merchant's business logo on Nomba",
-                              "example": "https://cdn.nomba.com/logos/flexcharge.png"
-                            }
-                          }
-                        },
-                        "hasSavedCards": {
-                          "type": "boolean",
-                          "description": "True if this customer has previously tokenized cards on Nomba",
-                          "example": true
-                        },
-                        "base64EncodedRsaPublicKey": {
-                          "type": "string",
-                          "description": "Base64-encoded RSA public key returned if data encryption is enabled on the Nomba account. Empty string if not enabled.",
-                          "example": "5844858382"
-                        },
-                        "warning": {
-                          "type": "string",
-                          "description": "Present only when Nomba is unreachable. Describes the degraded response.",
-                          "example": "Could not fetch live Nomba order: Request timeout"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized — invalid or missing credentials"
-          },
-          "404": {
-            "description": "Not Found — no invoice in this tenant's account matches the provided orderReference",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Invoice with order reference '90e81e8a-bc14-4ebf-89c0-57da752cca58' not found"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/invoices/{id}": {
-      "get": {
-        "summary": "Get Invoice Details",
-        "description": "Retrieve details of a specific invoice by ID.",
-        "tags": [
-          "Invoices"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Invoice details retrieved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Invoice"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Invoice not found"
-          }
-        }
-      }
-    },
-    "/invoices/checkout-transaction": {
-      "get": {
-        "summary": "Fetch checkout transaction details",
-        "description": "Fetches the full live status and details of a checkout transaction from Nomba, merged with the corresponding FlexCharge invoice record.\n\n**Wraps:** `GET https://api.nomba.com/v1/checkout/transaction`\n\n**idType Options:**\n- `ORDER_REFERENCE` (default) — Use the merchant-supplied reference string (stored as `nombaOrderReference` on the Invoice).\n- `ORDER_ID` — Use the UUID that Nomba returns when the checkout order is created.\n\n**Response includes four sections** (Nomba returns only the relevant ones per payment method):\n- `order` — always present (order metadata)\n- `transactionDetails` — present for card payments (includes tokenization status, payment references)\n- `transferDetails` — present for bank transfer payments\n- `cardDetails` — present when payment was made by card (masked PAN, card type, bank code)\n\n**This is distinct from `GET /invoices/order/:orderReference`** which fetches static order metadata. This endpoint returns the *transaction outcome* — whether the payment succeeded, how it was paid, and the full payment-method breakdown.\n\n**Graceful degradation:** Returns local invoice data with a `warning` field if Nomba is unreachable.",
-        "tags": [
-          "Invoices"
-        ],
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "idType",
-            "in": "query",
-            "description": "Which identifier type to use when looking up the transaction on Nomba. Defaults to ORDER_REFERENCE.",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "ORDER_REFERENCE",
-                "ORDER_ID"
-              ],
-              "default": "ORDER_REFERENCE",
-              "example": "ORDER_REFERENCE"
-            }
-          },
-          {
-            "name": "id",
-            "in": "query",
-            "description": "The identifier value. Must match the type selected in `idType`.",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Merged FlexCharge invoice + live Nomba checkout transaction details",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "invoice": {
-                          "description": "The FlexCharge internal invoice record",
-                          "$ref": "#/components/schemas/Invoice"
-                        },
-                        "checkoutTransaction": {
-                          "description": "Live Nomba checkout transaction. null if Nomba is unreachable.",
-                          "nullable": true,
-                          "type": "object",
-                          "properties": {
-                            "success": {
-                              "type": "boolean",
-                              "description": "True if the transaction is already completed and successful",
-                              "example": true
-                            },
-                            "message": {
-                              "type": "string",
-                              "description": "Human-readable status description",
-                              "example": "success"
-                            },
-                            "order": {
-                              "type": "object",
-                              "description": "Order metadata for this transaction",
-                              "properties": {
-                                "orderId": {
-                                  "type": "string",
-                                  "example": "56e03654-0c32-4d3e-bbd6-a9df22994a12"
-                                },
-                                "orderReference": {
-                                  "type": "string",
-                                  "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58"
-                                },
-                                "customerId": {
-                                  "type": "string",
-                                  "example": "762878332454"
-                                },
-                                "accountId": {
-                                  "type": "string",
-                                  "example": "56e03654-0c32-4d3e-bbd6-a9df22994a12"
-                                },
-                                "callbackUrl": {
-                                  "type": "string",
-                                  "example": "https://merchant.com/callback"
-                                },
-                                "customerEmail": {
-                                  "type": "string",
-                                  "format": "email",
-                                  "example": "customer@example.com"
-                                },
-                                "amountKobo": {
-                                  "type": "integer",
-                                  "description": "Amount in Kobo",
-                                  "example": 1000000
-                                },
-                                "amountNaira": {
-                                  "type": "string",
-                                  "description": "Original Naira string from Nomba",
-                                  "example": "10000.00"
-                                },
-                                "currency": {
-                                  "type": "string",
-                                  "enum": [
-                                    "NGN"
-                                  ],
-                                  "example": "NGN"
-                                }
-                              }
-                            },
-                            "transactionDetails": {
-                              "type": "object",
-                              "nullable": true,
-                              "description": "Present for card payments. Contains payment gateway references and tokenization status.",
-                              "properties": {
-                                "transactionDate": {
-                                  "type": "string",
-                                  "format": "date-time",
-                                  "example": "2023-12-06T15:46:43.000Z"
-                                },
-                                "paymentReference": {
-                                  "type": "string",
-                                  "example": "5844858382134"
-                                },
-                                "paymentVendorReference": {
-                                  "type": "string",
-                                  "example": "5844858382675493"
-                                },
-                                "tokenizedCardPayment": {
-                                  "type": "boolean",
-                                  "description": "True if paid via a tokenized card (recurring billing)",
-                                  "example": true
-                                },
-                                "statusCode": {
-                                  "type": "string",
-                                  "description": "Gateway status message",
-                                  "example": "Payment approved"
-                                }
-                              }
-                            },
-                            "transferDetails": {
-                              "type": "object",
-                              "nullable": true,
-                              "description": "Present for bank transfer payments. Contains NIP session and account details.",
-                              "properties": {
-                                "sessionId": {
-                                  "type": "string",
-                                  "example": "67584432178569543"
-                                },
-                                "beneficiaryAccountName": {
-                                  "type": "string",
-                                  "example": "Tope Fade"
-                                },
-                                "beneficiaryAccountNumber": {
-                                  "type": "string",
-                                  "example": "5844858382"
-                                },
-                                "originatorAccountName": {
-                                  "type": "string",
-                                  "example": "Femi Fash"
-                                },
-                                "originatorAccountNumber": {
-                                  "type": "string",
-                                  "example": "3409082834"
-                                },
-                                "narration": {
-                                  "type": "string",
-                                  "example": "Checkout payment"
-                                },
-                                "destinationInstitutionCode": {
-                                  "type": "string",
-                                  "example": "057"
-                                },
-                                "paymentReference": {
-                                  "type": "string",
-                                  "example": "44384586756"
-                                }
-                              }
-                            },
-                            "cardDetails": {
-                              "type": "object",
-                              "nullable": true,
-                              "description": "Present when the payment was made by card. Contains masked PAN and card metadata.",
-                              "properties": {
-                                "cardPan": {
-                                  "type": "string",
-                                  "description": "Masked card number",
-                                  "example": "515123 **** **** 6667"
-                                },
-                                "cardType": {
-                                  "type": "string",
-                                  "description": "Card scheme",
-                                  "example": "Verve"
-                                },
-                                "cardCurrency": {
-                                  "type": "string",
-                                  "example": "NGN"
-                                },
-                                "cardBank": {
-                                  "type": "string",
-                                  "description": "Issuing bank code",
-                                  "example": "057"
-                                }
-                              }
-                            }
-                          }
-                        },
-                        "warning": {
-                          "type": "string",
-                          "description": "Present only when Nomba is unreachable.",
-                          "example": "Could not fetch Nomba checkout transaction: Request timeout"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request — missing required query parameter 'id'",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Query parameter 'id' is required."
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized — invalid or missing credentials"
-          },
-          "404": {
-            "description": "Not Found — no invoice in this tenant's account matches the provided id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "No invoice found for ORDER_REFERENCE '90e81e8a-...' in this tenant account"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/register": {
-      "post": {
-        "summary": "Register a new Tenant",
-        "description": "Create a new tenant (downstream business team) account.",
-        "tags": [
-          "Authentication"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "name",
-                  "email",
-                  "password"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "example": "Acme Corp"
-                  },
-                  "email": {
-                    "type": "string",
-                    "format": "email",
-                    "example": "admin@acme.com"
-                  },
-                  "password": {
-                    "type": "string",
-                    "example": "SecurePassword123"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Tenant created successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "tenant": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "example": "651a2b3c4d5e6f7a8b9c0d1e"
-                            },
-                            "name": {
-                              "type": "string",
-                              "example": "Acme Corp"
-                            },
-                            "email": {
-                              "type": "string",
-                              "example": "admin@acme.com"
-                            }
-                          }
-                        },
-                        "token": {
-                          "type": "string",
-                          "example": "eyJhbGciOiJIUzI1NiIsIn..."
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/login": {
-      "post": {
-        "summary": "Tenant Login",
-        "description": "Authenticate tenant credentials and return a JWT session token.",
-        "tags": [
-          "Authentication"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "email",
-                  "password"
-                ],
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "format": "email",
-                    "example": "admin@acme.com"
-                  },
-                  "password": {
-                    "type": "string",
-                    "example": "SecurePassword123"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Logged in successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "tenant": {
-                          "type": "object"
-                        },
-                        "token": {
-                          "type": "string",
-                          "example": "eyJhbGciOiJIUzI1NiIsIn..."
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/me": {
-      "get": {
-        "summary": "Get Current Tenant",
-        "description": "Retrieves the currently authenticated tenant's profile. Used by the frontend to hydrate state on page reload.",
-        "tags": [
-          "Authentication"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Tenant profile retrieved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/change-password": {
-      "post": {
-        "summary": "Change Password",
-        "description": "Allows an authenticated tenant to change their password.",
-        "tags": [
-          "Authentication"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "currentPassword",
-                  "newPassword"
-                ],
-                "properties": {
-                  "currentPassword": {
-                    "type": "string",
-                    "example": "OldSecurePassword123"
-                  },
-                  "newPassword": {
-                    "type": "string",
-                    "example": "NewSecurePassword456"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Password changed successfully"
-          }
-        }
-      }
-    },
-    "/auth/forgot-password": {
-      "post": {
-        "summary": "Request Password Reset",
-        "description": "Generates a reset token and sends a reset link to the tenant's email.",
-        "tags": [
-          "Authentication"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "email"
-                ],
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "format": "email",
-                    "example": "admin@acme.com"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Reset link sent (if email is registered)"
-          }
-        }
-      }
-    },
-    "/auth/reset-password": {
-      "post": {
-        "summary": "Reset Password",
-        "description": "Sets a new password using a valid reset token.",
-        "tags": [
-          "Authentication"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "token",
-                  "newPassword"
-                ],
-                "properties": {
-                  "token": {
-                    "type": "string",
-                    "example": "abc123xyz"
-                  },
-                  "newPassword": {
-                    "type": "string",
-                    "example": "NewSecurePassword456"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Password reset successfully"
-          }
-        }
-      }
-    },
-    "/auth/api-keys": {
-      "get": {
-        "summary": "List API Keys",
-        "description": "List all active API keys issued to this tenant. Never returns raw keys.",
-        "tags": [
-          "API Keys"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of API keys retrieved"
-          }
-        }
-      },
-      "post": {
-        "summary": "Create API Key",
-        "description": "Generate a new API key. The raw key is returned ONLY once in the response.",
-        "tags": [
-          "API Keys"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "name"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "example": "Production API Key"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "API Key created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "apiKey": {
-                          "type": "object"
-                        },
-                        "rawKey": {
-                          "type": "string",
-                          "example": "fl_live_abcdef123456789..."
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/api-keys/{id}": {
-      "delete": {
-        "summary": "Revoke API Key",
-        "description": "Revoke programmatic access for an API key by ID.",
-        "tags": [
-          "API Keys"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "API Key revoked"
-          }
-        }
-      }
-    },
-    "/auth/webhook": {
-      "patch": {
-        "summary": "Update Webhook Destination URL",
-        "description": "Update the webhook URL where the engine dispatches subscription and payment event webhooks.",
-        "tags": [
-          "Webhooks"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "webhookUrl"
-                ],
-                "properties": {
-                  "webhookUrl": {
-                    "type": "string",
-                    "format": "uri",
-                    "example": "https://api.mybusiness.com/webhooks"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Webhook configuration updated"
-          }
-        }
-      }
-    },
-    "/auth/webhook-secret": {
-      "get": {
-        "summary": "Retrieve Webhook Signing Secret",
-        "description": "Retrieve the webhook signing secret for verifying signatures on event dispatches.",
-        "tags": [
-          "Webhooks"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Webhook secret retrieved"
-          }
-        }
-      }
-    },
     "/plans": {
       "get": {
-        "summary": "List Plans",
-        "description": "Retrieve all plans belonging to this tenant.",
-        "tags": [
-          "Plans"
-        ],
+        "tags": ["Plans"],
+        "summary": "List plans",
+        "description": "Returns the tenant's plans for runtime integration. Plans are created in the dashboard UI.",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "responses": {
           "200": {
-            "description": "List of plans"
-          }
-        }
-      },
-      "post": {
-        "summary": "Create Plan",
-        "description": "Create a new subscription plan. Plan amounts should be stored in Kobo (e.g. ₦1,000 = 100000).",
-        "tags": [
-          "Plans"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "name",
-                  "amount",
-                  "interval"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "example": "Pro Monthly Plan"
-                  },
-                  "amount": {
-                    "type": "integer",
-                    "example": 500000
-                  },
-                  "currency": {
-                    "type": "string",
-                    "default": "NGN",
-                    "example": "NGN"
-                  },
-                  "interval": {
-                    "type": "string",
-                    "enum": [
-                      "weekly",
-                      "monthly",
-                      "quarterly",
-                      "yearly"
-                    ],
-                    "example": "monthly"
-                  },
-                  "trialDays": {
-                    "type": "integer",
-                    "default": 0,
-                    "example": 7
-                  },
-                  "features": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "example": [
-                      "Uncapped features",
-                      "Priority Support"
-                    ]
-                  }
+            "description": "Plans returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
                 }
               }
             }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Plan created successfully"
           }
         }
       }
     },
-    "/plans/{id}": {
+    "/plans/public/{id}": {
       "get": {
-        "summary": "Get Plan Details",
-        "tags": [
-          "Plans"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
+        "tags": ["Plans"],
+        "summary": "Get public plan",
+        "description": "Optional helper for hosted checkout pages. Accepts either a plan ID or slug.",
         "parameters": [
           {
             "name": "id",
@@ -1158,109 +62,56 @@
         ],
         "responses": {
           "200": {
-            "description": "Plan details retrieved"
-          }
-        }
-      },
-      "patch": {
-        "summary": "Update Plan",
-        "tags": [
-          "Plans"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "amount": {
-                    "type": "integer"
-                  },
-                  "features": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "isActive": {
-                    "type": "boolean"
-                  }
+            "description": "Plan returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemResponse"
                 }
               }
             }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Plan updated"
-          }
-        }
-      },
-      "delete": {
-        "summary": "Delete Plan (Soft Delete)",
-        "tags": [
-          "Plans"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Plan soft-deleted (deactivated)"
           }
         }
       }
     },
     "/customers": {
-      "get": {
-        "summary": "List Customers",
-        "description": "List customers belonging to the tenant. Supports pagination parameters.",
-        "tags": [
-          "Customers"
-        ],
+      "post": {
+        "tags": ["Customers"],
+        "summary": "Create customer",
         "security": [
           {
             "apiKeyAuth": []
-          },
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Customer created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Customers"],
+        "summary": "List customers",
+        "security": [
           {
-            "bearerAuth": []
+            "apiKeyAuth": []
           }
         ],
         "parameters": [
@@ -1268,92 +119,47 @@
             "name": "page",
             "in": "query",
             "schema": {
-              "type": "string",
-              "default": "1"
+              "type": "integer",
+              "default": 1
             }
           },
           {
             "name": "limit",
             "in": "query",
             "schema": {
-              "type": "string",
-              "default": "20"
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "schema": {
+              "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "List of customers"
-          }
-        }
-      },
-      "post": {
-        "summary": "Create Customer",
-        "description": "Add a new customer under the tenant.",
-        "tags": [
-          "Customers"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "email"
-                ],
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "format": "email",
-                    "example": "customer@acme.com"
-                  },
-                  "name": {
-                    "type": "string",
-                    "example": "John Doe"
-                  },
-                  "phone": {
-                    "type": "string",
-                    "example": "+2348012345678"
-                  },
-                  "metadata": {
-                    "type": "object",
-                    "example": {
-                      "company": "Acme Partner"
-                    }
-                  }
+            "description": "Customers returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
                 }
               }
             }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Customer registered"
           }
         }
       }
     },
     "/customers/{id}": {
       "get": {
-        "summary": "Get Customer Details",
-        "tags": [
-          "Customers"
-        ],
+        "tags": ["Customers"],
+        "summary": "Get customer",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -1368,21 +174,23 @@
         ],
         "responses": {
           "200": {
-            "description": "Customer details retrieved"
+            "description": "Customer returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemResponse"
+                }
+              }
+            }
           }
         }
       },
       "patch": {
-        "summary": "Update Customer",
-        "tags": [
-          "Customers"
-        ],
+        "tags": ["Customers"],
+        "summary": "Update customer",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -1400,42 +208,32 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "phone": {
-                    "type": "string"
-                  },
-                  "metadata": {
-                    "type": "object"
-                  }
-                }
+                "$ref": "#/components/schemas/CustomerUpdate"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Customer updated"
+            "description": "Customer updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemResponse"
+                }
+              }
+            }
           }
         }
       }
     },
-    "/portal/sessions": {
+    "/subscriptions": {
       "post": {
-        "summary": "Create Portal Session",
-        "description": "Generate a short-lived customer portal JWT token. Called by the Tenant.",
-        "tags": [
-          "Customer Portal"
-        ],
+        "tags": ["Subscriptions"],
+        "summary": "Create subscription",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "requestBody": {
@@ -1443,90 +241,36 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "customerId"
-                ],
-                "properties": {
-                  "customerId": {
-                    "type": "string",
-                    "example": "651a2b3c4d5e6f7a8b9c0d1e"
-                  }
-                }
+                "$ref": "#/components/schemas/SubscriptionCreate"
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Portal token generated",
+            "description": "Subscription created successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "portalToken": {
-                          "type": "string"
-                        },
-                        "portalUrl": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/SubscriptionCreateResponse"
                 }
               }
             }
           }
         }
-      }
-    },
-    "/portal/me": {
+      },
       "get": {
-        "summary": "Get Customer Profile (Portal)",
-        "description": "Retrieve customer details. Authenticated using the customer's short-lived Portal JWT.",
-        "tags": [
-          "Customer Portal"
-        ],
-        "security": [
-          {
-            "portalAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Customer profile retrieved"
-          }
-        }
-      }
-    },
-    "/subscriptions": {
-      "get": {
-        "summary": "List Subscriptions",
-        "description": "Retrieve all subscriptions belonging to the tenant. Optionally filter by status or customerId.",
-        "tags": [
-          "Subscriptions"
-        ],
+        "tags": ["Subscriptions"],
+        "summary": "List subscriptions",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "parameters": [
           {
             "name": "status",
             "in": "query",
-            "description": "Filter by subscription status (pending, active, past_due, canceled, unpaid)",
             "schema": {
               "type": "string"
             }
@@ -1534,7 +278,6 @@
           {
             "name": "customerId",
             "in": "query",
-            "description": "Filter by Customer ID",
             "schema": {
               "type": "string"
             }
@@ -1542,100 +285,11 @@
         ],
         "responses": {
           "200": {
-            "description": "List of subscriptions retrieved successfully",
+            "description": "Subscriptions returned successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Subscription"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Create Subscription",
-        "description": "Create a new subscription for a customer and generate a Nomba checkout link for authorization.",
-        "tags": [
-          "Subscriptions"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "customerId",
-                  "planId"
-                ],
-                "properties": {
-                  "customerId": {
-                    "type": "string",
-                    "example": "651a2b3c4d5e6f7a8b9c0d1e"
-                  },
-                  "planId": {
-                    "type": "string",
-                    "example": "651a2b3c4d5e6f7a8b9c0d1f"
-                  },
-                  "metadata": {
-                    "type": "object",
-                    "additionalProperties": true,
-                    "example": {
-                      "referral": "ad-campaign"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Subscription created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "subscriptionId": {
-                          "type": "string",
-                          "example": "651a2b3c4d5e6f7a8b9c0d20"
-                        },
-                        "checkoutLink": {
-                          "type": "string",
-                          "example": "https://pay.nomba.com/sandbox/QMojVVIswaIri..."
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/CollectionResponse"
                 }
               }
             }
@@ -1645,17 +299,11 @@
     },
     "/subscriptions/{id}": {
       "get": {
-        "summary": "Get Subscription Details",
-        "description": "Retrieve details of a specific subscription by ID.",
-        "tags": [
-          "Subscriptions"
-        ],
+        "tags": ["Subscriptions"],
+        "summary": "Get subscription",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -1670,93 +318,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Subscription details retrieved successfully",
+            "description": "Subscription returned successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Subscription"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Subscription not found"
-          }
-        }
-      }
-    },
-    "/subscriptions/{id}/cancel": {
-      "post": {
-        "summary": "Cancel Subscription",
-        "description": "Cancel an active subscription. Supports graceful cancellation at the end of the current billing cycle or immediate cancellation.",
-        "tags": [
-          "Subscriptions"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "cancelAtPeriodEnd": {
-                    "type": "boolean",
-                    "default": true,
-                    "example": true
-                  },
-                  "cancellationReason": {
-                    "type": "string",
-                    "example": "User requested cancellation"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Subscription cancellation scheduled or processed successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Subscription cancelled successfully"
-                    }
-                  }
+                  "$ref": "#/components/schemas/ItemResponse"
                 }
               }
             }
@@ -1764,19 +330,13 @@
         }
       }
     },
-    "/subscriptions/{id}/simulate-change": {
+    "/subscriptions/{id}/cancel": {
       "post": {
-        "summary": "Simulate Plan Change",
-        "description": "Preview a plan change (dry-run). Returns proration line items and credits.",
-        "tags": [
-          "Subscriptions"
-        ],
+        "tags": ["Subscriptions"],
+        "summary": "Cancel subscription",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -1784,7 +344,6 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "Subscription ID",
             "schema": {
               "type": "string"
             }
@@ -1795,169 +354,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "newPlanId"
-                ],
-                "properties": {
-                  "newPlanId": {
-                    "type": "string"
-                  },
-                  "changeDate": {
-                    "type": "string",
-                    "format": "date-time"
-                  }
-                }
+                "$ref": "#/components/schemas/CancelSubscription"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Simulation payload",
+            "description": "Subscription canceled successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "simulation": {
-                          "type": "boolean",
-                          "example": true
-                        },
-                        "warning": {
-                          "type": "string",
-                          "example": "This is a preview. No charges have been made."
-                        },
-                        "subscription": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "example": "6a4528280b5c8adf78216501"
-                            },
-                            "currentPlanId": {
-                              "type": "string",
-                              "example": "6a4526ae21f3256568c3d5c2"
-                            },
-                            "currentPlanName": {
-                              "type": "string",
-                              "example": "Pro Monthly Plan"
-                            },
-                            "newPlanId": {
-                              "type": "string",
-                              "example": "6a4526ae21f3256568c3d5c5"
-                            },
-                            "newPlanName": {
-                              "type": "string",
-                              "example": "Enterprise Monthly Plan"
-                            }
-                          }
-                        },
-                        "proration": {
-                          "type": "object",
-                          "properties": {
-                            "type": {
-                              "type": "string",
-                              "enum": [
-                                "upgrade",
-                                "downgrade"
-                              ],
-                              "example": "upgrade"
-                            },
-                            "changeDate": {
-                              "type": "string",
-                              "format": "date-time",
-                              "example": "2026-07-02T07:45:00.000Z"
-                            },
-                            "currentPeriod": {
-                              "type": "object",
-                              "properties": {
-                                "start": {
-                                  "type": "string",
-                                  "format": "date-time",
-                                  "example": "2026-07-01T00:00:00.000Z"
-                                },
-                                "end": {
-                                  "type": "string",
-                                  "format": "date-time",
-                                  "example": "2026-08-01T00:00:00.000Z"
-                                }
-                              }
-                            },
-                            "totalDaysInPeriod": {
-                              "type": "integer",
-                              "example": 31
-                            },
-                            "daysRemaining": {
-                              "type": "integer",
-                              "example": 30
-                            },
-                            "unusedCredit": {
-                              "type": "integer",
-                              "example": 483870
-                            },
-                            "newPlanCostRemaining": {
-                              "type": "integer",
-                              "example": 967741
-                            }
-                          }
-                        },
-                        "invoice": {
-                          "type": "object",
-                          "properties": {
-                            "subtotal": {
-                              "type": "integer",
-                              "example": 483871
-                            },
-                            "subtotalFormatted": {
-                              "type": "string",
-                              "example": "₦4,838.71"
-                            },
-                            "amountDue": {
-                              "type": "integer",
-                              "example": 483871
-                            },
-                            "amountDueFormatted": {
-                              "type": "string",
-                              "example": "₦4,838.71"
-                            },
-                            "credit": {
-                              "type": "integer",
-                              "example": 483870
-                            },
-                            "creditFormatted": {
-                              "type": "string",
-                              "example": "₦4,838.70"
-                            },
-                            "currency": {
-                              "type": "string",
-                              "example": "NGN"
-                            }
-                          }
-                        },
-                        "nextBillingDate": {
-                          "type": "string",
-                          "format": "date-time",
-                          "example": "2026-08-01T00:00:00.000Z"
-                        },
-                        "nextBillingAmount": {
-                          "type": "integer",
-                          "example": 1000000
-                        },
-                        "nextBillingAmountFormatted": {
-                          "type": "string",
-                          "example": "₦10,000.00"
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/ItemResponse"
                 }
               }
             }
@@ -1967,17 +375,11 @@
     },
     "/subscriptions/{id}/change-plan": {
       "post": {
-        "summary": "Change Subscription Plan",
-        "description": "Execute a plan upgrade or downgrade, calculate proration, and charge/credit.",
-        "tags": [
-          "Subscriptions"
-        ],
+        "tags": ["Subscriptions"],
+        "summary": "Change subscription plan",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -1985,7 +387,6 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "Subscription ID",
             "schema": {
               "type": "string"
             }
@@ -1996,141 +397,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "newPlanId"
-                ],
-                "properties": {
-                  "newPlanId": {
-                    "type": "string"
-                  }
-                }
+                "$ref": "#/components/schemas/ChangePlan"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Plan changed successfully",
+            "description": "Subscription plan changed successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "subscription": {
-                          "type": "object",
-                          "properties": {
-                            "_id": {
-                              "type": "string",
-                              "example": "6a4528280b5c8adf78216501"
-                            },
-                            "tenantId": {
-                              "type": "string",
-                              "example": "6a3bce3ef26b81436b51b0a3"
-                            },
-                            "customerId": {
-                              "type": "string",
-                              "example": "6a4526d521f3256568c3d5c3"
-                            },
-                            "planId": {
-                              "type": "string",
-                              "example": "6a4526ae21f3256568c3d5c5"
-                            },
-                            "status": {
-                              "type": "string",
-                              "example": "active"
-                            },
-                            "cancelAtPeriodEnd": {
-                              "type": "boolean",
-                              "example": false
-                            },
-                            "currentPeriodStart": {
-                              "type": "string",
-                              "format": "date-time",
-                              "example": "2026-07-01T14:46:00.419Z"
-                            },
-                            "currentPeriodEnd": {
-                              "type": "string",
-                              "format": "date-time",
-                              "example": "2026-08-01T14:46:00.419Z"
-                            },
-                            "tokenKey": {
-                              "type": "string",
-                              "example": "token_key_here"
-                            },
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time",
-                              "example": "2026-07-01T14:46:00.419Z"
-                            },
-                            "updatedAt": {
-                              "type": "string",
-                              "format": "date-time",
-                              "example": "2026-07-02T07:46:00.000Z"
-                            }
-                          }
-                        },
-                        "invoice": {
-                          "type": "object",
-                          "properties": {
-                            "_id": {
-                              "type": "string",
-                              "example": "6a45920a0b5c8adf78216522"
-                            },
-                            "tenantId": {
-                              "type": "string",
-                              "example": "6a3bce3ef26b81436b51b0a3"
-                            },
-                            "customerId": {
-                              "type": "string",
-                              "example": "6a4526d521f3256568c3d5c3"
-                            },
-                            "subscriptionId": {
-                              "type": "string",
-                              "example": "6a4528280b5c8adf78216501"
-                            },
-                            "amount": {
-                              "type": "integer",
-                              "example": 483871
-                            },
-                            "currency": {
-                              "type": "string",
-                              "example": "NGN"
-                            },
-                            "status": {
-                              "type": "string",
-                              "example": "paid"
-                            },
-                            "nombaOrderReference": {
-                              "type": "string",
-                              "example": "txn_8c4b02f9191b383d"
-                            },
-                            "isRenewal": {
-                              "type": "boolean",
-                              "example": false
-                            },
-                            "description": {
-                              "type": "string",
-                              "example": "Plan upgrade from 6a4526ae21f3256568c3d5c2 to 6a4526ae21f3256568c3d5c5"
-                            },
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time",
-                              "example": "2026-07-02T07:46:00.000Z"
-                            }
-                          },
-                          "nullable": true
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/ItemResponse"
                 }
               }
             }
@@ -2139,67 +417,12 @@
       }
     },
     "/wallets": {
-      "get": {
-        "summary": "List Wallets",
-        "description": "Retrieve all customer credit wallets belonging to the tenant.",
-        "tags": [
-          "Credit Wallets"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "customerId",
-            "in": "query",
-            "description": "Filter by Customer ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of wallets retrieved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Wallet"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
       "post": {
-        "summary": "Create Wallet",
-        "description": "Create a new credit wallet for a customer.",
-        "tags": [
-          "Credit Wallets"
-        ],
+        "tags": ["Wallets"],
+        "summary": "Create wallet",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "requestBody": {
@@ -2207,20 +430,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "customerId"
-                ],
-                "properties": {
-                  "customerId": {
-                    "type": "string",
-                    "example": "651a2b3c4d5e6f7a8b9c0d1e"
-                  },
-                  "subscriptionId": {
-                    "type": "string",
-                    "example": "651a2b3c4d5e6f7a8b9c0d20"
-                  }
-                }
+                "$ref": "#/components/schemas/WalletCreate"
               }
             }
           }
@@ -2231,16 +441,44 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Wallet"
-                    }
-                  }
+                  "$ref": "#/components/schemas/ItemResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Wallets"],
+        "summary": "List wallets",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "walletGroupId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Wallets returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
                 }
               }
             }
@@ -2250,17 +488,11 @@
     },
     "/wallets/{id}": {
       "get": {
-        "summary": "Get Wallet Details",
-        "description": "Retrieve credit wallet configuration and balance details by ID.",
-        "tags": [
-          "Credit Wallets"
-        ],
+        "tags": ["Wallets"],
+        "summary": "Get wallet",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -2275,43 +507,25 @@
         ],
         "responses": {
           "200": {
-            "description": "Wallet details retrieved successfully",
+            "description": "Wallet returned successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Wallet"
-                    }
-                  }
+                  "$ref": "#/components/schemas/ItemResponse"
                 }
               }
             }
-          },
-          "404": {
-            "description": "Wallet not found"
           }
         }
       }
     },
     "/wallets/{id}/top-up": {
       "post": {
-        "summary": "Top Up Wallet Credits",
-        "description": "Manually add credit funds to a wallet. Amount should be specified in Kobo.",
-        "tags": [
-          "Credit Wallets"
-        ],
+        "tags": ["Wallets"],
+        "summary": "Top up wallet",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -2329,26 +543,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "amount",
-                  "description"
-                ],
-                "properties": {
-                  "amount": {
-                    "type": "integer",
-                    "description": "Amount in Kobo to credit",
-                    "example": 500000
-                  },
-                  "description": {
-                    "type": "string",
-                    "example": "Manual balance credit top-up"
-                  },
-                  "referenceId": {
-                    "type": "string",
-                    "example": "ref_topup_9921"
-                  }
-                }
+                "$ref": "#/components/schemas/WalletTransactionRequest"
               }
             }
           }
@@ -2359,16 +554,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/CreditDebitResult"
-                    }
-                  }
+                  "$ref": "#/components/schemas/CreditDebitResult"
                 }
               }
             }
@@ -2378,17 +564,11 @@
     },
     "/wallets/{id}/deduct": {
       "post": {
-        "summary": "Deduct Wallet Credits",
-        "description": "Deduct credit funds from a wallet balance based on usage consumption. Amount should be specified in Kobo.",
-        "tags": [
-          "Credit Wallets"
-        ],
+        "tags": ["Wallets"],
+        "summary": "Deduct wallet balance",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -2406,26 +586,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "amount",
-                  "description"
-                ],
-                "properties": {
-                  "amount": {
-                    "type": "integer",
-                    "description": "Amount in Kobo to deduct",
-                    "example": 1000
-                  },
-                  "description": {
-                    "type": "string",
-                    "example": "API usage: 10 compute minutes"
-                  },
-                  "referenceId": {
-                    "type": "string",
-                    "example": "usage_ref_8829"
-                  }
-                }
+                "$ref": "#/components/schemas/WalletTransactionRequest"
               }
             }
           }
@@ -2436,39 +597,21 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/CreditDebitResult"
-                    }
-                  }
+                  "$ref": "#/components/schemas/CreditDebitResult"
                 }
               }
             }
-          },
-          "400": {
-            "description": "Insufficient wallet balance"
           }
         }
       }
     },
     "/wallets/{id}/transactions": {
       "get": {
-        "summary": "List Wallet Transactions",
-        "description": "Retrieve the ledger history of all credit and debit transactions for a specific wallet.",
-        "tags": [
-          "Credit Wallets"
-        ],
+        "tags": ["Wallets"],
+        "summary": "List wallet transactions",
         "security": [
           {
             "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
           }
         ],
         "parameters": [
@@ -2483,23 +626,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Wallet transaction history retrieved successfully",
+            "description": "Transactions returned successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/WalletTransaction"
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/CollectionResponse"
                 }
               }
             }
@@ -2507,384 +638,10 @@
         }
       }
     },
-    "/wallets/{id}/auto-top-up": {
-      "patch": {
-        "summary": "Update Auto Top-Up Settings",
-        "description": "Configure auto top-up threshold triggers and charge refill amounts.",
-        "tags": [
-          "Credit Wallets"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "autoTopUp"
-                ],
-                "properties": {
-                  "autoTopUp": {
-                    "type": "boolean",
-                    "example": true
-                  },
-                  "autoTopUpAmount": {
-                    "type": "integer",
-                    "description": "Amount in Kobo to charge Nomba on trigger",
-                    "example": 500000
-                  },
-                  "autoTopUpTrigger": {
-                    "type": "integer",
-                    "description": "Balance threshold in Kobo that triggers top-up",
-                    "example": 10000
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Auto top-up configuration updated successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Wallet"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/subscriptions/{id}/pause": {
+    "/portal/sessions": {
       "post": {
-        "summary": "Pause Subscription",
-        "description": "Pause an active subscription.",
-        "tags": [
-          "Subscriptions"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Subscription ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Subscription paused"
-          }
-        }
-      }
-    },
-    "/subscriptions/{id}/resume": {
-      "post": {
-        "summary": "Resume Subscription",
-        "description": "Resume a paused subscription.",
-        "tags": [
-          "Subscriptions"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Subscription ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Subscription resumed"
-          }
-        }
-      }
-    },
-    "/portal/subscription": {
-      "get": {
-        "summary": "Get Portal Subscription",
-        "description": "Customer views their own subscription using a portal token.",
-        "tags": [
-          "Portal"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Subscription details"
-          }
-        }
-      }
-    },
-    "/portal/invoices": {
-      "get": {
-        "summary": "Get Portal Invoices",
-        "description": "Customer views their invoices.",
-        "tags": [
-          "Portal"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of invoices"
-          }
-        }
-      }
-    },
-    "/portal/update-payment-method": {
-      "post": {
-        "summary": "Update Payment Method",
-        "description": "Customer requests a Nomba checkout link to tokenize a new card.",
-        "tags": [
-          "Portal"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Checkout link generated"
-          }
-        }
-      }
-    },
-    "/portal/cancel": {
-      "post": {
-        "summary": "Cancel Portal Subscription",
-        "description": "Customer schedules cancellation.",
-        "tags": [
-          "Portal"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Subscription scheduled for cancellation"
-          }
-        }
-      }
-    },
-    "/ledger/dashboard/balance": {
-      "get": {
-        "summary": "Get Ledger Balance (Dashboard)",
-        "description": "Retrieve the tenant's current available balance, total withdrawn, settlement bank account details, and transaction history.",
-        "tags": [
-          "Ledger & Payouts"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Ledger balance retrieved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/LedgerBalance"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/ledger/dashboard/bank-account": {
-      "post": {
-        "summary": "Set Settlement Bank Account",
-        "description": "Configure the tenant's settlement bank account. The account name is resolved automatically via Nomba before saving.",
-        "tags": [
-          "Ledger & Payouts"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "bankCode",
-                  "accountNumber"
-                ],
-                "properties": {
-                  "bankCode": {
-                    "type": "string",
-                    "example": "058"
-                  },
-                  "accountNumber": {
-                    "type": "string",
-                    "example": "0123456789"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Settlement bank account configured successfully"
-          }
-        }
-      }
-    },
-    "/ledger/dashboard/withdraw": {
-      "post": {
-        "summary": "Request Payout (Dashboard)",
-        "description": "Manually trigger a withdrawal/payout to the configured settlement bank account.",
-        "tags": [
-          "Ledger & Payouts"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "amount"
-                ],
-                "properties": {
-                  "amount": {
-                    "type": "integer",
-                    "description": "Amount to withdraw in KOBO",
-                    "example": 50000
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Withdrawal processed successfully"
-          }
-        }
-      }
-    },
-    "/ledger/v1": {
-      "get": {
-        "summary": "Get Ledger Balance (Developer API)",
-        "description": "Retrieve the tenant's current available balance, total withdrawn, settlement bank account details, and transaction history.",
-        "tags": [
-          "Developer Ledger API"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Ledger balance retrieved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/LedgerBalance"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/ledger/v1/withdrawals": {
-      "post": {
-        "summary": "Request Payout (Developer API)",
-        "description": "Trigger a withdrawal programmatically via the API to the configured settlement bank account.",
-        "tags": [
-          "Developer Ledger API"
-        ],
+        "tags": ["Portal"],
+        "summary": "Create portal session",
         "security": [
           {
             "apiKeyAuth": []
@@ -2895,1751 +652,196 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "amount"
-                ],
-                "properties": {
-                  "amount": {
-                    "type": "integer",
-                    "description": "Amount to withdraw in KOBO",
-                    "example": 50000
-                  }
-                }
+                "$ref": "#/components/schemas/PortalSessionRequest"
               }
             }
           }
         },
         "responses": {
-          "200": {
-            "description": "Withdrawal processed successfully"
-          }
-        }
-      }
-    },
-    "/ledger/v1/refunds": {
-      "post": {
-        "summary": "Process Refund (Developer API)",
-        "description": "Initiate a refund for a paid invoice. Deducts from the tenant's available ledger balance and pays back the customer.",
-        "tags": [
-          "Developer Ledger API"
-        ],
-        "security": [
-          {
-            "apiKeyAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "invoiceId",
-                  "accountNumber",
-                  "bankCode"
-                ],
-                "properties": {
-                  "invoiceId": {
-                    "type": "string",
-                    "description": "Invoice ID to refund",
-                    "example": "651a2b3c4d5e6f7a8b9c0d21"
-                  },
-                  "accountNumber": {
-                    "type": "string",
-                    "description": "Customer's destination account number for the refund",
-                    "example": "0123456789"
-                  },
-                  "bankCode": {
-                    "type": "string",
-                    "description": "Customer's bank code",
-                    "example": "058"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Refund processed successfully"
-          }
-        }
-      }
-    },
-    "/api/analytics/current": {
-      "get": {
-        "tags": [
-          "Analytics"
-        ],
-        "summary": "Get current top-line analytics metrics",
-        "description": "Returns MRR, ARR, Active Subscribers, ARPU, and Churn Rate for the authenticated tenant.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
+          "201": {
+            "description": "Portal session created successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "mrr": {
-                          "type": "number",
-                          "description": "MRR in Kobo"
-                        },
-                        "arr": {
-                          "type": "number",
-                          "description": "ARR in Kobo"
-                        },
-                        "activeSubscribers": {
-                          "type": "number"
-                        },
-                        "arpu": {
-                          "type": "number",
-                          "description": "ARPU in Kobo"
-                        },
-                        "churnRate": {
-                          "type": "number",
-                          "description": "Churn percentage"
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/PortalSessionResponse"
                 }
               }
             }
           }
-        }
-      }
-    },
-    "/api/analytics/historical": {
-      "get": {
-        "tags": [
-          "Analytics"
-        ],
-        "summary": "Get historical analytics snapshots",
-        "description": "Returns an array of daily analytics snapshots for charting.",
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "days",
-            "in": "query",
-            "description": "Number of past days to retrieve (default: 30, max: 365)",
-            "required": false,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "date": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "mrr": {
-                            "type": "number"
-                          },
-                          "arr": {
-                            "type": "number"
-                          },
-                          "activeSubscribers": {
-                            "type": "number"
-                          },
-                          "churnRate": {
-                            "type": "number"
-                          },
-                          "arpu": {
-                            "type": "number"
-                          },
-                          "dailyRevenue": {
-                            "type": "number"
-                          },
-                          "dailyFailedRevenue": {
-                            "type": "number"
-                          },
-                          "dailyWalletConsumption": {
-                            "type": "number"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/tokenized-cards": {
-      "get": {
-        "summary": "List merchant tokenized cards",
-        "description": "Fetches the merchant's full list of tokenized cards from Nomba. Supports optional filtering by customer email and date range, with cursor-based pagination.\n\nProxies to Nomba API: `GET /v1/checkout/tokenized-card-data`",
-        "tags": [
-          "Tokenized Cards"
-        ],
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "customerEmail",
-            "in": "query",
-            "description": "Filter tokenized cards by customer email address",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "email",
-              "example": "customer@example.com"
-            }
-          },
-          {
-            "name": "startDate",
-            "in": "query",
-            "description": "Start of the token creation date window (ISO 8601 date string)",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "example": "2026-01-01"
-            }
-          },
-          {
-            "name": "endDate",
-            "in": "query",
-            "description": "End of the token creation date window (ISO 8601 date string)",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "example": "2026-07-01"
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "description": "0-indexed page number. Omit or set to 0 for the first page.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0,
-              "example": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Tokenized card list retrieved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "nextPage": {
-                          "type": "string",
-                          "description": "Cursor for the next page. \"0\" or empty means no more pages.",
-                          "example": "2"
-                        },
-                        "tokenizedCardDataList": {
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/components/schemas/TokenizedCardItem"
-                          }
-                        },
-                        "total": {
-                          "type": "integer",
-                          "description": "Number of records in this page",
-                          "example": 5
-                        },
-                        "hasMore": {
-                          "type": "boolean",
-                          "description": "Convenience flag — true when nextPage is non-zero",
-                          "example": true
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid query parameters (e.g. negative page number)"
-          },
-          "401": {
-            "description": "Missing or invalid authentication token"
-          },
-          "500": {
-            "description": "Internal server error or Nomba API failure"
-          },
-          "503": {
-            "description": "Nomba integration not configured"
-          }
-        }
-      },
-      "post": {
-        "summary": "Update tokenized card data",
-        "description": "Updates the email address associated with a specific tokenized card token.\n\nNomba validates that `currentEmailAddress` **exactly matches** the email on\nrecord for `tokenKey` before applying the update. If there is a mismatch,\nNomba will return a 400 error.\n\n**Use cases:**\n- Customer updates their email address in the merchant's app\n- Merging duplicate customer accounts under a new email\n- Correcting a typo in the customer's original email\n\nProxies to Nomba API: `POST /v1/checkout/tokenized-card-data`",
-        "tags": [
-          "Tokenized Cards"
-        ],
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "tokenKey",
-                  "currentEmailAddress",
-                  "newEmailAddress"
-                ],
-                "properties": {
-                  "tokenKey": {
-                    "type": "string",
-                    "description": "The token key returned by Nomba when the card was tokenized. Available from GET /api/tokenized-cards.",
-                    "example": "5844858382"
-                  },
-                  "currentEmailAddress": {
-                    "type": "string",
-                    "format": "email",
-                    "description": "Email address currently associated with this tokenKey in Nomba's vault. Must match exactly — Nomba validates this before applying the update.",
-                    "example": "email@email.com"
-                  },
-                  "newEmailAddress": {
-                    "type": "string",
-                    "format": "email",
-                    "description": "New email address to associate with this tokenKey going forward.",
-                    "example": "newemail@email.com"
-                  }
-                }
-              },
-              "example": {
-                "tokenKey": "5844858382",
-                "currentEmailAddress": "email@email.com",
-                "newEmailAddress": "newemail@email.com"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Tokenized card updated successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "boolean",
-                          "description": "true when the update was applied successfully",
-                          "example": true
-                        },
-                        "message": {
-                          "type": "string",
-                          "description": "The new email address now associated with the token",
-                          "example": "newemail@email.com"
-                        },
-                        "tokenizedCardData": {
-                          "type": "array",
-                          "description": "The updated card records for this token",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "tokenKey": {
-                                "type": "string",
-                                "example": "e890bd1a9f0d"
-                              },
-                              "customerEmail": {
-                                "type": "string",
-                                "format": "email",
-                                "example": "email@email.com"
-                              },
-                              "cardType": {
-                                "type": "string",
-                                "example": "Verve"
-                              },
-                              "cardPan": {
-                                "type": "string",
-                                "example": "234818********7580"
-                              },
-                              "tokenExpirationDate": {
-                                "type": "string",
-                                "example": "20/20"
-                              }
-                            }
-                          }
-                        },
-                        "total": {
-                          "type": "integer",
-                          "description": "Number of card records returned",
-                          "example": 1
-                        }
-                      }
-                    }
-                  }
-                },
-                "example": {
-                  "success": true,
-                  "data": {
-                    "status": true,
-                    "message": "newemail@email.com",
-                    "total": 1,
-                    "tokenizedCardData": [
-                      {
-                        "tokenKey": "e890bd1a9f0d",
-                        "customerEmail": "newemail@email.com",
-                        "cardType": "Verve",
-                        "cardPan": "234818********7580",
-                        "tokenExpirationDate": "20/20"
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error — missing or invalid request body fields"
-          },
-          "401": {
-            "description": "Missing or invalid authentication token"
-          },
-          "403": {
-            "description": "Forbidden — insufficient permissions for this operation"
-          },
-          "404": {
-            "description": "tokenKey not found in Nomba's vault"
-          },
-          "429": {
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "description": "Internal server error or Nomba API failure"
-          },
-          "503": {
-            "description": "Nomba integration not configured (missing NOMBA_CLIENT_ID / NOMBA_CLIENT_SECRET)"
-          }
-        }
-      },
-      "delete": {
-        "summary": "Delete tokenized card data",
-        "description": "Permanently removes a tokenized card from Nomba's vault.\n\n> **⚠️ IRREVERSIBLE**: Once deleted, the `tokenKey` is immediately invalidated\n> and can no longer be used for recurring charges. The customer must go through\n> the full card-save OTP flow again to re-register their card.\n\n**Use cases:**\n- Customer explicitly requests card removal (GDPR / NDPR compliance)\n- Merchant cleaning up expired or invalid token keys\n- Regulatory or compliance-mandated PII purging\n\n**Note:** Although this is a DELETE request, Nomba requires a JSON body\ncontaining the `tokenKey`. Pass it in the request body as shown.\n\nProxies to Nomba API: `DELETE /v1/checkout/tokenized-card-data`",
-        "tags": [
-          "Tokenized Cards"
-        ],
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "tokenKey"
-                ],
-                "properties": {
-                  "tokenKey": {
-                    "type": "string",
-                    "description": "The token key of the card to permanently delete. Once deleted this tokenKey is invalidated and cannot be recovered.",
-                    "example": "5844858382"
-                  }
-                }
-              },
-              "example": {
-                "tokenKey": "5844858382"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Tokenized card deleted successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "boolean",
-                          "description": "true when the card was deleted successfully",
-                          "example": true
-                        },
-                        "message": {
-                          "type": "string",
-                          "description": "Human-readable confirmation",
-                          "example": "success"
-                        },
-                        "tokenKey": {
-                          "type": "string",
-                          "description": "The tokenKey that was deleted",
-                          "example": "5844858382"
-                        }
-                      }
-                    }
-                  }
-                },
-                "example": {
-                  "success": true,
-                  "data": {
-                    "status": true,
-                    "message": "success",
-                    "tokenKey": "5844858382"
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error — missing or invalid request body fields"
-          },
-          "401": {
-            "description": "Missing or invalid authentication token"
-          },
-          "403": {
-            "description": "Forbidden — insufficient permissions for this operation"
-          },
-          "404": {
-            "description": "tokenKey not found in Nomba's vault"
-          },
-          "429": {
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "description": "Internal server error or Nomba API failure"
-          },
-          "503": {
-            "description": "Nomba integration not configured (missing NOMBA_CLIENT_ID / NOMBA_CLIENT_SECRET)"
-          }
-        }
-      }
-    },
-    "/tokenized-cards/user/{orderReference}": {
-      "get": {
-        "summary": "Get user saved cards (OTP-gated)",
-        "description": "Retrieves the saved cards for a specific customer, verified by a one-time password.\n\n**Two-step flow (OTP required):**\n1. Call `POST /v1/checkout/user-card/saved-card/auth` — Nomba sends an OTP to the customer's registered mobile number.\n2. Call this endpoint with the OTP as a query param — Nomba validates the OTP and returns the customer's saved cards.\n\nProxies to Nomba API: `GET /v1/checkout/user-card/{orderReference}`",
-        "tags": [
-          "Tokenized Cards"
-        ],
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "orderReference",
-            "in": "path",
-            "description": "The original checkout order reference associated with the customer's card",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58"
-            }
-          },
-          {
-            "name": "otp",
-            "in": "query",
-            "description": "One-time password sent to the customer's registered mobile number. Obtain by calling POST /checkout/user-card/saved-card/auth first.",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "example": "123456"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "User saved cards retrieved successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "orderReference": {
-                          "type": "string",
-                          "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58"
-                        },
-                        "tokenizedCardData": {
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/components/schemas/TokenizedCardItem"
-                          }
-                        },
-                        "total": {
-                          "type": "integer",
-                          "description": "Number of saved cards for this customer",
-                          "example": 2
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Missing or invalid orderReference path param or otp query param"
-          },
-          "401": {
-            "description": "Missing or invalid authentication token"
-          },
-          "404": {
-            "description": "Order reference not found or OTP mismatch"
-          },
-          "500": {
-            "description": "Internal server error or Nomba API failure"
-          },
-          "503": {
-            "description": "Nomba integration not configured"
-          }
-        }
-      }
-    },
-    "/tokenized-cards/user-card/saved-card/auth": {
-      "post": {
-        "summary": "Request OTP to validate user before fetching saved cards",
-        "description": "Triggers Nomba to send an OTP SMS to the customer's registered phone number,\nauthenticating them **before** their previously saved cards are retrieved.\n\n**When to call:**\nCall this when `GET /api/checkout/orders/{orderReference}` returns `hasSavedCards: true`.\nAfter the OTP is delivered, submit it via `GET /api/tokenized-cards/user/{orderReference}?otp=<otp>`\nto retrieve the customer's saved cards.\n\n**Full flow:**\n1. `POST /api/tokenized-cards/user-card/saved-card/auth` ← **this endpoint** — triggers OTP\n2. Customer receives OTP via SMS\n3. `GET /api/tokenized-cards/user/{orderReference}?otp=<otp>` — returns saved cards\n\nProxies to Nomba API: `POST /v1/checkout/user-card/saved-card/auth`",
-        "tags": [
-          "Tokenized Cards"
-        ],
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "orderReference"
-                ],
-                "properties": {
-                  "orderReference": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "The original checkout order reference. Used by Nomba to look up the customer's registered mobile number.",
-                    "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
-                  }
-                }
-              },
-              "example": {
-                "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OTP dispatched successfully — customer will receive an SMS shortly",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "success": {
-                          "type": "boolean",
-                          "example": true
-                        },
-                        "message": {
-                          "type": "string",
-                          "example": "success"
-                        },
-                        "orderReference": {
-                          "type": "string",
-                          "format": "uuid",
-                          "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
-                        },
-                        "nextStep": {
-                          "type": "string",
-                          "example": "Submit the OTP the customer received via POST /api/tokenized-cards/user-card"
-                        }
-                      }
-                    }
-                  }
-                },
-                "example": {
-                  "success": true,
-                  "data": {
-                    "success": true,
-                    "message": "success",
-                    "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
-                    "nextStep": "Submit the OTP the customer received via GET /api/tokenized-cards/user/:orderReference?otp=<otp>"
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error — missing or invalid request body fields"
-          },
-          "401": {
-            "description": "Missing or invalid authentication token"
-          },
-          "429": {
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "description": "Internal server error or Nomba API failure"
-          },
-          "503": {
-            "description": "Nomba integration not configured (missing NOMBA_CLIENT_ID / NOMBA_CLIENT_SECRET)"
-          }
-        }
-      }
-    },
-    "/tokenized-cards/user-card/auth": {
-      "post": {
-        "summary": "Request OTP before saving a user's card",
-        "description": "Triggers Nomba to send an OTP SMS to the customer's registered phone number,\nauthenticating them **before** their card is saved for future use.\n\n**When to call:**\nAfter a successful checkout payment **and** the customer has opted to save their card\nfor future recurring charges. Call this endpoint first to dispatch the OTP, then submit\nthe OTP via `POST /api/tokenized-cards/user-card` to finalise the card save.\n\n**Full card-save flow:**\n1. Customer completes payment successfully\n2. `POST /api/tokenized-cards/user-card/auth` ← **this endpoint** — triggers OTP\n3. Customer receives OTP via SMS\n4. `POST /api/tokenized-cards/user-card` — submits OTP to tokenize and save the card\n\nProxies to Nomba API: `POST /v1/checkout/user-card/auth`",
-        "tags": [
-          "Tokenized Cards"
-        ],
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "orderReference",
-                  "phoneNumber"
-                ],
-                "properties": {
-                  "orderReference": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "The original checkout order reference against which the payment was made.",
-                    "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
-                  },
-                  "phoneNumber": {
-                    "type": "string",
-                    "description": "The customer's Nigerian mobile number. Nomba will SMS the OTP to this number. Accepted formats: 08012345678 | +2348012345678.",
-                    "example": "08012345678"
-                  }
-                }
-              },
-              "example": {
-                "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
-                "phoneNumber": "08012345678"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OTP dispatched successfully — customer will receive an SMS shortly",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "success": {
-                          "type": "boolean",
-                          "example": true
-                        },
-                        "message": {
-                          "type": "string",
-                          "example": "success"
-                        },
-                        "orderReference": {
-                          "type": "string",
-                          "format": "uuid",
-                          "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
-                        },
-                        "nextStep": {
-                          "type": "string",
-                          "example": "Submit the OTP the customer received via POST /api/tokenized-cards/user-card"
-                        }
-                      }
-                    }
-                  }
-                },
-                "example": {
-                  "success": true,
-                  "data": {
-                    "success": true,
-                    "message": "success",
-                    "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
-                    "nextStep": "Submit the OTP the customer received via POST /api/tokenized-cards/user-card"
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error — missing or invalid request body fields"
-          },
-          "401": {
-            "description": "Missing or invalid authentication token"
-          },
-          "429": {
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "description": "Internal server error or Nomba API failure"
-          },
-          "503": {
-            "description": "Nomba integration not configured (missing NOMBA_CLIENT_ID / NOMBA_CLIENT_SECRET)"
-          }
-        }
-      }
-    },
-    "/tokenized-cards/user-card": {
-      "post": {
-        "summary": "Submit user OTP to complete card tokenization",
-        "description": "Submits the OTP the customer received on their mobile phone to Nomba.\nOn success, Nomba tokenizes and stores the card for future recurring charges.\n\n**This is the FINAL step of the card-save OTP flow:**\n1. `POST /api/tokenized-cards/user-card/auth` — triggers OTP\n2. Customer receives OTP via SMS\n3. `POST /api/tokenized-cards/user-card` ← **this endpoint** — submits OTP, saves card\n\nAfter this call succeeds, the card's `tokenKey` will appear in future calls to:\n- `GET /api/tokenized-cards` (merchant card list)\n- `GET /api/tokenized-cards/user/{orderReference}` (customer saved cards)\n\nThe `tokenKey` can then be used to charge the customer via the tokenized-card-payment endpoint.\n\nProxies to Nomba API: `POST /v1/checkout/user-card`",
-        "tags": [
-          "Tokenized Cards"
-        ],
-        "security": [
-          {
-            "ApiKeyAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "orderReference",
-                  "phoneNumber",
-                  "otp"
-                ],
-                "properties": {
-                  "orderReference": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "The original checkout order reference. Must match the reference used in step 1 (POST /user-card/auth).",
-                    "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
-                  },
-                  "phoneNumber": {
-                    "type": "string",
-                    "description": "The customer's Nigerian mobile number. Must match the number used in step 1 (POST /user-card/auth).",
-                    "example": "08012345678"
-                  },
-                  "otp": {
-                    "type": "string",
-                    "description": "The one-time code received on the customer's mobile phone. Must be 4–8 numeric digits.",
-                    "example": "1234",
-                    "minLength": 4,
-                    "maxLength": 8,
-                    "pattern": "^\\d{4,8}$"
-                  }
-                }
-              },
-              "example": {
-                "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
-                "phoneNumber": "08012345678",
-                "otp": "1234"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Card saved successfully — the card has been tokenized and is available for future charges",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "success": {
-                          "type": "boolean",
-                          "example": true
-                        },
-                        "message": {
-                          "type": "string",
-                          "example": "success"
-                        },
-                        "orderReference": {
-                          "type": "string",
-                          "format": "uuid",
-                          "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
-                        }
-                      }
-                    }
-                  }
-                },
-                "example": {
-                  "success": true,
-                  "data": {
-                    "success": true,
-                    "message": "success",
-                    "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error — missing or invalid request body fields"
-          },
-          "401": {
-            "description": "Missing or invalid authentication token"
-          },
-          "429": {
-            "description": "Rate limit exceeded"
-          },
-          "500": {
-            "description": "Internal server error or Nomba API failure"
-          },
-          "503": {
-            "description": "Nomba integration not configured (missing NOMBA_CLIENT_ID / NOMBA_CLIENT_SECRET)"
-          }
-        }
-      }
-    },
-    "/checkout/card-detail": {
-      "post": {
-        "summary": "Submit customer card details",
-        "description": "Submits the customer's card credentials to Nomba to initiate a direct card-payment transaction.\n\n**Response code semantics (`data.responseCode`):**\n- `\"00\"` — Payment complete. No further steps needed.\n- `\"T0\"` — Nomba dispatched an OTP to the customer's phone. Next: `POST /api/checkout/card-otp`.\n- `\"S0\"` — 3D Secure authentication required. Redirect to `data.secureAuthenticationData.acsUrl`.\n\nProxies to Nomba API: `POST /v1/checkout/checkout-card-detail`",
-        "tags": ["Checkout"],
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["cardDetails", "orderReference", "saveCard", "deviceInformation"],
-                "properties": {
-                  "cardDetails": {
-                    "type": "object",
-                    "required": ["cardCVV", "cardExpiryMonth", "cardExpiryYear", "cardNumber", "cardPin"],
-                    "properties": {
-                      "cardCVV": { "type": "integer", "example": 123 },
-                      "cardExpiryMonth": { "type": "integer", "minimum": 1, "maximum": 12, "example": 3 },
-                      "cardExpiryYear": { "type": "integer", "example": 2050 },
-                      "cardNumber": { "type": "string", "pattern": "^\\d{13,19}$", "example": "5190752909999995" },
-                      "cardPin": { "type": "integer", "example": 1111 }
-                    }
-                  },
-                  "key": { "type": "string", "description": "RSA encryption key or empty string", "example": "" },
-                  "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
-                  "saveCard": { "type": "boolean", "description": "Save card for future tokenized charges", "example": true },
-                  "deviceInformation": {
-                    "type": "object",
-                    "required": ["httpBrowserLanguage","httpBrowserJavaEnabled","httpBrowserJavaScriptEnabled","httpBrowserColorDepth","httpBrowserScreenHeight","httpBrowserScreenWidth","httpBrowserTimeDifference","userAgentBrowserValue","deviceChannel"],
-                    "properties": {
-                      "httpBrowserLanguage": { "type": "string", "example": "en-GB" },
-                      "httpBrowserJavaEnabled": { "type": "string", "enum": ["true","false"], "example": "true" },
-                      "httpBrowserJavaScriptEnabled": { "type": "string", "enum": ["true","false"], "example": "true" },
-                      "httpBrowserColorDepth": { "type": "string", "example": "30" },
-                      "httpBrowserScreenHeight": { "type": "string", "example": "900" },
-                      "httpBrowserScreenWidth": { "type": "string", "example": "1500" },
-                      "httpBrowserTimeDifference": { "type": "string", "example": "-60" },
-                      "userAgentBrowserValue": { "type": "string", "example": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" },
-                      "deviceChannel": { "type": "string", "example": "Browser" }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Card details accepted — inspect data.responseCode for next step",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": { "type": "boolean", "example": true },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "status": { "type": "boolean", "example": true },
-                        "message": { "type": "string", "example": "Success" },
-                        "responseCode": { "type": "string", "enum": ["00","T0","S0"], "example": "T0" },
-                        "transactionId": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
-                        "nextAction": { "type": "string", "example": "An OTP has been sent to the customer. Submit it via POST /api/checkout/card-otp with the transactionId." },
-                        "secureAuthenticationData": {
-                          "type": "object",
-                          "description": "Populated only when responseCode is S0",
-                          "properties": {
-                            "jwt": { "type": "string", "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." },
-                            "md": { "type": "string", "example": "6775843012" },
-                            "acsUrl": { "type": "string", "format": "uri", "example": "https://ip:port/merchant.com/callback" },
-                            "termUrl": { "type": "string", "format": "uri", "example": "https://ip:port/merchant.com/callback" }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": { "description": "Validation error — missing or invalid card fields" },
-          "401": { "description": "Missing or invalid authentication credentials" },
-          "429": { "description": "Rate limit exceeded" },
-          "500": { "description": "Internal server error or Nomba API failure" },
-          "503": { "description": "Nomba integration not configured" }
-        }
-      }
-    },
-    "/checkout/card-otp": {
-      "post": {
-        "summary": "Submit customer card OTP (payment authorization)",
-        "description": "Submits the payment OTP dispatched to the customer's phone during card-detail submission.\n\n**WHEN TO CALL:** Only when `POST /api/checkout/card-detail` returned `responseCode = \"T0\"`.\n\n**Note:** This is the **payment authorization OTP** — entirely separate from the card-save OTP (`POST /api/tokenized-cards/user-card`).\n\nProxies to Nomba API: `POST /v1/checkout/checkout-card-otp`",
-        "tags": ["Checkout"],
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["otp", "orderReference", "transactionId"],
-                "properties": {
-                  "otp": { "type": "string", "pattern": "^\\d{4,8}$", "minLength": 4, "maxLength": 8, "example": "1234" },
-                  "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
-                  "transactionId": { "type": "string", "description": "Transaction ID returned by POST /api/checkout/card-detail", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
-                }
-              },
-              "example": {
-                "otp": "1234",
-                "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
-                "transactionId": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OTP accepted and payment authorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": { "type": "boolean", "example": true },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "status": { "type": "boolean", "example": true },
-                        "message": { "type": "string", "example": "success" },
-                        "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
-                        "transactionId": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": { "description": "Validation error — invalid OTP format or missing transactionId" },
-          "401": { "description": "Missing or invalid authentication credentials" },
-          "429": { "description": "Rate limit exceeded" },
-          "500": { "description": "Internal server error, Nomba API failure, or invalid/expired OTP" },
-          "503": { "description": "Nomba integration not configured" }
-        }
-      }
-    },
-    "/checkout/resend-otp": {
-      "post": {
-        "summary": "Resend payment OTP to customer's phone",
-        "description": "Re-triggers payment OTP dispatch when the customer hasn't received the OTP sent during `POST /api/checkout/card-detail`.\n\n**WHEN TO CALL:** Only after `POST /api/checkout/card-detail` returned `responseCode = \"T0\"` and the customer reports not receiving the OTP.\n\nProxies to Nomba API: `POST /v1/checkout/resend-otp`",
-        "tags": ["Checkout"],
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["orderReference"],
-                "properties": {
-                  "orderReference": { "type": "string", "format": "uuid", "description": "The original checkout order reference", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
-                }
-              },
-              "example": { "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OTP re-sent successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": { "type": "boolean", "example": true },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "success": { "type": "boolean", "example": true },
-                        "message": { "type": "string", "example": "success" },
-                        "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
-                        "nextStep": { "type": "string", "example": "Once the customer receives the OTP, submit it via POST /api/checkout/card-otp" }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": { "description": "Validation error — missing or invalid orderReference" },
-          "401": { "description": "Missing or invalid authentication credentials" },
-          "429": { "description": "Rate limit exceeded" },
-          "500": { "description": "Internal server error or Nomba API failure" },
-          "503": { "description": "Nomba integration not configured" }
-        }
-      }
-    },
-    "/checkout/confirm-transaction-receipt": {
-      "post": {
-        "summary": "Confirm checkout transaction details",
-        "description": "Fetches the checkout transaction details and confirms the final payment status.\n\n**WHEN TO CALL:** After the customer has either:\n- Submitted a payment OTP via `POST /api/checkout/card-otp`, OR\n- Made a bank transfer to the flash (KTA) account number.\n\nThis is the canonical endpoint to get the authoritative status from Nomba. Use the returned `order` object to display a receipt, update your database, and trigger post-payment webhooks.\n\n⚠️ **POLLING:** Do NOT call this in a tight loop. Wait for the customer to complete their action, then call once. If still pending, use exponential backoff or await a Nomba webhook.\n\nProxies to Nomba API: `POST /v1/checkout/confirm-transaction-receipt`",
-        "tags": ["Checkout"],
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["orderReference"],
-                "properties": {
-                  "orderReference": {
-                    "type": "string",
-                    "format": "uuid",
-                    "description": "The original checkout order reference UUID",
-                    "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe"
-                  }
-                }
-              },
-              "example": { "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Transaction details fetched — check data.status to confirm payment success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": { "type": "boolean", "example": true },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "boolean",
-                          "description": "true when the transaction was successful",
-                          "example": true
-                        },
-                        "message": { "type": "string", "example": "success" },
-                        "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
-                        "order": {
-                          "type": "object",
-                          "nullable": true,
-                          "description": "Full order details from Nomba. Null if the order was not found.",
-                          "properties": {
-                            "orderId": { "type": "string", "format": "uuid", "description": "Nomba-generated order ID", "example": "56e03654-0c32-4d3e-bbd6-a9df22994a12" },
-                            "orderReference": { "type": "string", "format": "uuid", "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58" },
-                            "customerId": { "type": "string", "description": "Customer ID", "example": "762878332454" },
-                            "accountId": { "type": "string", "format": "uuid", "description": "Account whose wallet is credited on payment", "example": "56e03654-0c32-4d3e-bbd6-a9df22994a12" },
-                            "callbackUrl": { "type": "string", "format": "uri", "description": "Merchant redirect URL after payment", "example": "https://ip:port/merchant.com/callback" },
-                            "customerEmail": { "type": "string", "format": "email", "example": "abcde@gmail.com" },
-                            "amount": { "type": "string", "description": "Amount paid (as a string decimal)", "example": "10000.00" },
-                            "currency": { "type": "string", "enum": ["NGN"], "example": "NGN" },
-                            "businessName": { "type": "string", "example": "Merchant Ltd" },
-                            "businessEmail": { "type": "string", "format": "email", "example": "abcde@gmail.com" },
-                            "businessLogo": { "type": "string", "format": "uri", "example": "https://ip:port/merchant.com/logo" }
-                          }
-                        }
-                      }
-                    }
-                  }
-                },
-                "example": {
-                  "success": true,
-                  "data": {
-                    "status": true,
-                    "message": "success",
-                    "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
-                    "order": {
-                      "orderId": "56e03654-0c32-4d3e-bbd6-a9df22994a12",
-                      "orderReference": "90e81e8a-bc14-4ebf-89c0-57da752cca58",
-                      "customerId": "762878332454",
-                      "accountId": "56e03654-0c32-4d3e-bbd6-a9df22994a12",
-                      "callbackUrl": "https://ip:port/merchant.com/callback",
-                      "customerEmail": "abcde@gmail.com",
-                      "amount": "10000.00",
-                      "currency": "NGN",
-                      "businessName": "Merchant Ltd",
-                      "businessEmail": "abcde@gmail.com",
-                      "businessLogo": "https://ip:port/merchant.com/logo"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": { "description": "Validation error — missing or invalid orderReference" },
-          "401": { "description": "Missing or invalid authentication credentials" },
-          "429": { "description": "Rate limit exceeded" },
-          "500": { "description": "Internal server error or Nomba API failure" },
-          "503": { "description": "Nomba integration not configured" }
-        }
-      }
-    },
-    "/checkout/flash-account/{orderReference}": {
-      "get": {
-        "summary": "Fetch checkout flash account number for bank transfer",
-        "description": "Returns a dynamically generated flash virtual account number (KTA — Know The Account) that the customer can use to pay via bank transfer instead of card.\n\nThe customer transfers exactly the order amount to the returned account from any Nigerian bank. After Nomba receives and confirms the transfer, call `POST /api/checkout/confirm-transaction-receipt` to verify the payment and retrieve the full order receipt.\n\nProxies to Nomba API: `GET /v1/checkout/get-checkout-kta/{orderReference}`",
-        "tags": ["Checkout"],
-        "security": [{ "ApiKeyAuth": [] }, { "BearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "orderReference",
-            "in": "path",
-            "required": true,
-            "description": "The original checkout order reference UUID",
-            "schema": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Flash account details returned — instruct customer to transfer the exact order amount to this account",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": { "type": "boolean", "example": true },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "accountNumber": {
-                          "type": "string",
-                          "description": "Virtual account number the customer should transfer to",
-                          "example": "5678576432"
-                        },
-                        "accountName": {
-                          "type": "string",
-                          "description": "Name of the virtual account",
-                          "example": "Femi Fash"
-                        },
-                        "bankName": {
-                          "type": "string",
-                          "description": "Bank holding the virtual account",
-                          "example": "Nombank Mfb"
-                        },
-                        "orderReference": { "type": "string", "format": "uuid", "example": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe" },
-                        "nextStep": {
-                          "type": "string",
-                          "description": "Next action the integration should take after showing the account details to the customer",
-                          "example": "Instruct the customer to transfer exactly the order amount to this account. Then confirm payment via POST /api/checkout/confirm-transaction-receipt."
-                        }
-                      }
-                    }
-                  }
-                },
-                "example": {
-                  "success": true,
-                  "data": {
-                    "accountNumber": "5678576432",
-                    "accountName": "Femi Fash",
-                    "bankName": "Nombank Mfb",
-                    "orderReference": "c4307d58-2513-41d8-b7f7-dfecd5f9fdbe",
-                    "nextStep": "Instruct the customer to transfer exactly the order amount to this account. Then confirm payment via POST /api/checkout/confirm-transaction-receipt."
-                  }
-                }
-              }
-            }
-          },
-          "400": { "description": "Validation error — missing or invalid orderReference path parameter" },
-          "401": { "description": "Missing or invalid authentication credentials" },
-          "404": { "description": "Order not found for the given orderReference" },
-          "429": { "description": "Rate limit exceeded" },
-          "500": { "description": "Internal server error or Nomba API failure" },
-          "503": { "description": "Nomba integration not configured" }
         }
       }
     }
   },
-
   "components": {
     "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT",
-        "description": "Provide the Tenant JWT token returned on Registration/Login."
-      },
       "apiKeyAuth": {
         "type": "apiKey",
         "in": "header",
-        "name": "x-api-key",
-        "description": "Provide the programmatic API key issued to the Tenant."
+        "name": "x-api-key"
       },
       "portalAuth": {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "JWT",
-        "description": "Provide the short-lived Portal token returned by POST /portal/sessions."
+        "bearerFormat": "JWT"
       }
     },
     "schemas": {
-      "Subscription": {
+      "CollectionResponse": {
         "type": "object",
         "properties": {
-          "_id": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d20"
+          "success": {
+            "type": "boolean",
+            "example": true
           },
-          "tenantId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "ItemResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
           },
+          "data": {
+            "type": "object"
+          }
+        }
+      },
+      "CustomerCreate": {
+        "type": "object",
+        "required": ["email"],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "CustomerUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "SubscriptionCreate": {
+        "type": "object",
+        "required": ["customerId", "planId"],
+        "properties": {
           "customerId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+            "type": "string"
           },
           "planId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d1f"
+            "type": "string"
           },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "active",
-              "past_due",
-              "canceled",
-              "unpaid"
-            ],
-            "example": "active"
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
           },
-          "tokenKey": {
+          "returnUrl": {
             "type": "string",
-            "example": "tok_123456789",
-            "nullable": true
+            "format": "uri"
+          }
+        }
+      },
+      "SubscriptionCreateResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
           },
-          "cardLast4": {
-            "type": "string",
-            "example": "4242",
-            "nullable": true
-          },
-          "cardBrand": {
-            "type": "string",
-            "example": "VISA",
-            "nullable": true
-          },
-          "nombaCheckoutOrderRef": {
-            "type": "string",
-            "example": "sub_123_456",
-            "nullable": true
-          },
-          "currentPeriodStart": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-03-31T10:00:00Z",
-            "nullable": true
-          },
-          "currentPeriodEnd": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-04-30T10:00:00Z",
-            "nullable": true
-          },
-          "nextBillingDate": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-04-30T10:00:00Z",
-            "nullable": true
-          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "subscription": {
+                "type": "object"
+              },
+              "checkoutLink": {
+                "type": "string",
+                "nullable": true
+              },
+              "invoiceId": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "CancelSubscription": {
+        "type": "object",
+        "properties": {
           "cancelAtPeriodEnd": {
             "type": "boolean",
-            "example": false
+            "default": true
           },
           "cancellationReason": {
-            "type": "string",
-            "example": "No longer needed",
-            "nullable": true
-          },
-          "canceledAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-04-15T12:00:00Z",
-            "nullable": true
-          },
-          "metadata": {
-            "type": "object",
-            "additionalProperties": true,
-            "example": {
-              "referral": "ad-campaign"
-            }
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-03-31T10:00:00Z"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-03-31T10:00:00Z"
+            "type": "string"
           }
         }
       },
-      "Invoice": {
+      "ChangePlan": {
         "type": "object",
+        "required": ["newPlanId"],
         "properties": {
-          "_id": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d21"
+          "newPlanId": {
+            "type": "string"
           },
-          "tenantId": {
+          "changeDate": {
             "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d1e"
+            "format": "date-time"
+          }
+        }
+      },
+      "WalletCreate": {
+        "type": "object",
+        "required": ["customerId"],
+        "properties": {
+          "customerId": {
+            "type": "string"
           },
           "subscriptionId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d20"
-          },
-          "customerId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d1e"
-          },
-          "amount": {
-            "type": "integer",
-            "description": "Amount in Kobo",
-            "example": 500000
-          },
-          "currency": {
-            "type": "string",
-            "default": "NGN",
-            "example": "NGN"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "paid",
-              "failed",
-              "refunded"
-            ],
-            "example": "paid"
-          },
-          "nombaOrderReference": {
-            "type": "string",
-            "example": "90e81e8a-bc14-4ebf-89c0-57da752cca58"
-          },
-          "nombaTransactionId": {
-            "type": "string",
-            "example": "txn_987654321",
-            "nullable": true
-          },
-          "description": {
-            "type": "string",
-            "example": "Pro Plan Renewal"
-          },
-          "isRenewal": {
-            "type": "boolean",
-            "example": true
-          },
-          "failureReason": {
-            "type": "string",
-            "example": "Insufficient funds",
-            "nullable": true
-          },
-          "idempotencyKey": {
-            "type": "string",
-            "example": "bill_subId_periodEnd"
-          },
-          "paidAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-03-31T10:05:00Z",
-            "nullable": true
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-03-31T10:00:00Z"
+            "type": "string"
           }
         }
       },
-      "Wallet": {
+      "WalletTransactionRequest": {
         "type": "object",
+        "required": ["amount", "description"],
         "properties": {
-          "_id": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d22"
-          },
-          "tenantId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d1e"
-          },
-          "customerId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d1e"
-          },
-          "subscriptionId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d20",
-            "nullable": true
-          },
-          "balance": {
-            "type": "integer",
-            "description": "Credit balance in Kobo",
-            "example": 250000
-          },
-          "currency": {
-            "type": "string",
-            "default": "NGN",
-            "example": "NGN"
-          },
-          "creditValue": {
-            "type": "number",
-            "default": 100,
-            "example": 100
-          },
-          "lowBalanceThreshold": {
-            "type": "integer",
-            "default": 50000,
-            "example": 50000
-          },
-          "autoTopUp": {
-            "type": "boolean",
-            "default": false,
-            "example": true
-          },
-          "autoTopUpAmount": {
-            "type": "integer",
-            "example": 500000,
-            "nullable": true
-          },
-          "autoTopUpTrigger": {
-            "type": "integer",
-            "default": 0,
-            "example": 10000,
-            "nullable": true
-          },
-          "isActive": {
-            "type": "boolean",
-            "default": true,
-            "example": true
-          },
-          "metadata": {
-            "type": "object",
-            "additionalProperties": true,
-            "example": {}
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-03-31T10:00:00Z"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-03-31T10:00:00Z"
-          }
-        }
-      },
-      "WalletTransaction": {
-        "type": "object",
-        "properties": {
-          "_id": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d23"
-          },
-          "tenantId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d1e"
-          },
-          "walletId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d22"
-          },
-          "customerId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d1e"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "credit",
-              "debit",
-              "auto_topup",
-              "manual_topup",
-              "refund",
-              "expiry"
-            ],
-            "example": "debit"
-          },
           "amount": {
             "type": "integer",
-            "description": "Amount in Kobo",
-            "example": 1000
-          },
-          "balanceAfter": {
-            "type": "integer",
-            "description": "Snapshot of wallet balance after this transaction in Kobo",
-            "example": 249000
+            "description": "Amount in kobo"
           },
           "description": {
-            "type": "string",
-            "example": "API usage: 10 compute minutes"
+            "type": "string"
           },
-          "idempotencyKey": {
-            "type": "string",
-            "example": "usage_ref_8829",
-            "nullable": true
-          },
-          "invoiceId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d21",
-            "nullable": true
-          },
-          "nombaOrderRef": {
-            "type": "string",
-            "example": "topup_123_456",
-            "nullable": true
-          },
-          "metadata": {
-            "type": "object",
-            "additionalProperties": true,
-            "example": {}
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-03-31T10:00:00Z"
+          "referenceId": {
+            "type": "string"
           }
         }
       },
@@ -4651,154 +853,48 @@
             "example": true
           },
           "walletId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d22"
+            "type": "string"
           },
           "transactionId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d23"
+            "type": "string"
           },
           "balanceBefore": {
-            "type": "integer",
-            "example": 250000
+            "type": "integer"
           },
           "balanceAfter": {
-            "type": "integer",
-            "example": 249000
+            "type": "integer"
           }
         }
       },
-      "LedgerBalance": {
+      "PortalSessionRequest": {
+        "type": "object",
+        "required": ["customerId"],
+        "properties": {
+          "customerId": {
+            "type": "string"
+          }
+        }
+      },
+      "PortalSessionResponse": {
         "type": "object",
         "properties": {
-          "availableBalance": {
-            "type": "integer",
-            "description": "Current available balance in Kobo",
-            "example": 500000
+          "success": {
+            "type": "boolean",
+            "example": true
           },
-          "totalWithdrawn": {
-            "type": "integer",
-            "description": "Total amount withdrawn to date in Kobo",
-            "example": 150000
-          },
-          "settlementAccount": {
+          "data": {
             "type": "object",
-            "nullable": true,
             "properties": {
-              "bankCode": {
-                "type": "string",
-                "example": "058"
+              "message": {
+                "type": "string"
               },
-              "accountNumber": {
-                "type": "string",
-                "example": "0123456789"
-              },
-              "accountName": {
-                "type": "string",
-                "example": "Acme Corp Ltd"
+              "expiresIn": {
+                "type": "string"
               }
             }
-          },
-          "recentTransactions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LedgerTransaction"
-            }
-          }
-        }
-      },
-      "LedgerTransaction": {
-        "type": "object",
-        "properties": {
-          "_id": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d24"
-          },
-          "tenantId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d1e"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "CREDIT",
-              "DEBIT"
-            ],
-            "example": "CREDIT"
-          },
-          "amount": {
-            "type": "integer",
-            "description": "Amount in Kobo",
-            "example": 50000
-          },
-          "description": {
-            "type": "string",
-            "example": "Payment received for Invoice 651a2b3c4d5e6f7a8b9c0d21"
-          },
-          "referenceId": {
-            "type": "string",
-            "example": "651a2b3c4d5e6f7a8b9c0d21"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "PENDING",
-              "SUCCESS",
-              "FAILED"
-            ],
-            "example": "SUCCESS"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-03-31T10:00:00Z"
-          }
-        }
-      },
-      "TokenizedCardItem": {
-        "type": "object",
-        "properties": {
-          "tokenKey": {
-            "type": "string",
-            "example": "e890bd1a9f0d"
-          },
-          "customerEmail": {
-            "type": "string",
-            "format": "email",
-            "example": "email@email.com"
-          },
-          "cardType": {
-            "type": "string",
-            "example": "Verve"
-          },
-          "cardPan": {
-            "type": "string",
-            "example": "234818********7580"
-          },
-          "tokenExpirationDate": {
-            "type": "string",
-            "example": "20/20"
           }
         }
       }
     }
-  },
-  "tags": [
-    {
-      "name": "Analytics",
-      "description": "Tenant metrics and analytics"
-    },
-    {
-      "name": "Invoices",
-      "description": "Invoice management and Nomba checkout order lookup"
-    },
-    {
-      "name": "Tokenized Cards",
-      "description": "Read-only access to Nomba tokenized card records. Wraps GET /v1/checkout/tokenized-card-data and GET /v1/checkout/user-card/{orderReference}."
-    },
-    {
-      "name": "Checkout",
-      "description": "Direct card-payment and bank-transfer flows. Covers: card credential submission, payment OTP authorization, OTP resend, transaction receipt confirmation, and flash virtual account lookup for bank transfers. Proxies POST /v1/checkout/checkout-card-detail, POST /v1/checkout/checkout-card-otp, POST /v1/checkout/resend-otp, POST /v1/checkout/confirm-transaction-receipt, GET /v1/checkout/get-checkout-kta/{orderReference}."
-    }
-  ]
+  }
 }

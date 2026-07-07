@@ -318,6 +318,10 @@ let cachedAccessToken: string | null = null;
 let cachedRefreshToken: string | null = null;
 let tokenExpiresAt: number = 0; // Unix timestamp (ms)
 
+// Bank list cache
+let cachedBanks: Array<{ code: string; name: string }> | null = null;
+let banksCacheExpiresAt: number = 0; // Unix timestamp (ms)
+
 // ============================================================
 // SERVICE CLASS
 // ============================================================
@@ -1027,6 +1031,13 @@ class NombaService {
    * GET /v1/transfers/banks
    */
   async getBanks(): Promise<Array<{ code: string; name: string }>> {
+    const now = Date.now();
+    const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+    if (cachedBanks && now < banksCacheExpiresAt) {
+      logger.info("Serving bank list from memory cache");
+      return cachedBanks;
+    }
+
     const authHeaders = await this.getAuthHeaders();
     const response = await this.client.get<{
       code: string;
@@ -1038,11 +1049,20 @@ class NombaService {
     const isSuccess = code === "00" || code === "200" || response.data.description === "SUCCESS";
 
     if (isSuccess && response.data.data) {
+      let list: any[] = [];
       if (Array.isArray(response.data.data)) {
-        return response.data.data;
+        list = response.data.data;
+      } else if (Array.isArray(response.data.data.results)) {
+        list = response.data.data.results;
       }
-      if (Array.isArray(response.data.data.results)) {
-        return response.data.data.results;
+
+      if (list.length > 0) {
+        cachedBanks = list.map((b: any) => ({
+          code: b.code,
+          name: b.name,
+        }));
+        banksCacheExpiresAt = now + CACHE_TTL;
+        return cachedBanks;
       }
     }
     throw new Error(response.data.description || "Failed to fetch banks from Nomba");
