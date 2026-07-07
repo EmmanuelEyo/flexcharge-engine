@@ -3,6 +3,7 @@
 import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LogoIcon } from "@/components/ui/LogoIcon";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import { registerTenant } from "@/lib/auth";
@@ -124,9 +125,7 @@ export default function RegisterPage() {
     <div className="w-full max-w-md mx-auto space-y-6">
       <div className="space-y-2 text-center lg:text-left">
         <div className="text-2xl font-bold text-primary flex items-center justify-center lg:justify-start gap-2 mb-8">
-          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
-            bolt
-          </span>
+          <LogoIcon className="w-8 h-8 text-primary" />
           FlexCharge
         </div>
 

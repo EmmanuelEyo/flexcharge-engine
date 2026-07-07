@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useEffect, useState, Suspense } from "react";
@@ -853,7 +854,7 @@ function PortalDashboardContent() {
               <div>
                 <h3 className="text-xl font-bold tracking-tight text-slate-900">Add Payment Method</h3>
                 <p className="text-sm text-slate-500 mt-1">
-                  Choose how you'd like to pay for your subscription.
+                  Choose how you&lsquo;d like to pay for your subscription.
                 </p>
               </div>
               <button 
@@ -949,7 +950,7 @@ function PortalDashboardContent() {
                   className="w-full mt-4"
                   onClick={() => setShowMandateModal(false)}
                 >
-                  I'll do this later
+                  I&lsquo;ll do this later
                 </Button>
               </div>
             ) : (

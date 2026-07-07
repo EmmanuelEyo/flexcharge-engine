@@ -619,6 +619,88 @@ export async function changeSubscriptionPlan(
 }
 
 /**
+ * POST /subscriptions/:id/change-plan-checkout
+ * Generates an asynchronous checkout link for a plan upgrade difference.
+ */
+export async function changePlanCheckout(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const input = req.body as ChangePlanInput;
+    const { id } = req.params;
+    
+    const subscription = await Subscription.findOne({ _id: id, ...tenantFilter(req) });
+    if (!subscription) throw new NotFoundError("Subscription");
+    if (subscription.status !== "active" && subscription.status !== "trialing") {
+      throw new AppError("Can only change active subscriptions", 400);
+    }
+
+    const [currentPlan, newPlan] = await Promise.all([
+      Plan.findOne({ _id: subscription.planId, ...tenantFilter(req) }),
+      Plan.findOne({ _id: input.newPlanId, ...tenantFilter(req), isActive: true }),
+    ]);
+
+    if (!currentPlan) throw new NotFoundError("Current plan");
+    if (!newPlan) throw new NotFoundError("New plan");
+
+    const changeDate = new Date();
+    const result = calculateProration({
+      currentPlanAmount: currentPlan.amount,
+      newPlanAmount: newPlan.amount,
+      currentPeriodStart: subscription.currentPeriodStart!,
+      currentPeriodEnd: subscription.currentPeriodEnd!,
+      changeDate,
+    });
+
+    if (!result.isUpgrade || result.amountDue <= 0) {
+      throw new AppError("This endpoint is only for upgrades with an amount due. Use /change-plan directly for downgrades.", 400);
+    }
+
+    if (!nombaService.isConfigured()) {
+      throw new AppError("Nomba payment gateway is not configured", 400);
+    }
+
+    const customer = await Customer.findById(subscription.customerId);
+    const orderRef = `upg_${Date.now()}_${subscription._id.toString().slice(-6)}`;
+
+    const checkoutOrder = await nombaService.createCheckoutOrder({
+      orderReference: orderRef,
+      customerEmail: customer!.email,
+      amount: result.amountDue,
+      currency: newPlan.currency as "NGN" | "CDF" | "USD" | undefined,
+      callbackUrl: `${env.FRONTEND_URL || "http://localhost:3000"}/pay/success`,
+      tokenizeCard: true,
+    });
+
+    if (!checkoutOrder.checkoutLink) {
+      throw new AppError("Failed to generate checkout link from payment gateway", 500);
+    }
+
+    // Create a pending invoice that targets the new plan
+    const invoice = await Invoice.create({
+      tenantId: subscription.tenantId,
+      customerId: subscription.customerId,
+      subscriptionId: subscription._id,
+      amount: result.amountDue,
+      currency: newPlan.currency,
+      status: "pending",
+      nombaOrderReference: orderRef,
+      checkoutLink: checkoutOrder.checkoutLink,
+      isRenewal: false,
+      targetPlanId: newPlan._id,
+      description: `Plan upgrade checkout from ${currentPlan.name} to ${newPlan.name}`,
+    });
+
+    logger.info({ subscriptionId: subscription._id, invoiceId: invoice._id }, "Generated async plan upgrade checkout");
+    sendSuccess(res, { checkoutLink: checkoutOrder.checkoutLink, invoice });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * POST /subscriptions/:id/pause
  * Pause an active subscription.
  */

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { LogoIcon } from "@/components/ui/LogoIcon";
 
 interface NavItem {
   label: string;
@@ -50,9 +51,7 @@ function Sidebar({ pathname, onClose, }: {
     <div className="flex flex-col h-full py-6 bg-[#0b1c30]">
       <div className="px-6 mb-8 flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center">
-          <span className="material-symbols-outlined text-white text-[22px]">
-            bolt
-          </span>
+          <LogoIcon className="w-6 h-6 text-white" />
         </div>
         <div>
           <h1 className="text-lg font-bold text-white leading-tight">

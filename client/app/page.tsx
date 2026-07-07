@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Loader2, Zap } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { LogoIcon } from "@/components/ui/LogoIcon";
 
 export default function Home() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function Home() {
       
       <div className="z-10 flex flex-col items-center space-y-8 p-8 backdrop-blur-md bg-surface/50 rounded-3xl shadow-2xl border border-outline-variant/30">
         <div className="relative flex items-center justify-center w-28 h-28 rounded-full bg-gradient-to-tr from-primary to-tertiary shadow-xl shadow-primary/30">
-          <Zap className="w-12 h-12 text-on-primary animate-pulse" />
+          <LogoIcon className="w-12 h-12 text-on-primary animate-pulse" />
           <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-white/80 animate-spin" style={{ animationDuration: '1.5s' }} />
           <div className="absolute -inset-2 rounded-full border-4 border-transparent border-b-primary/50 animate-spin" style={{ animationDuration: '2.5s', animationDirection: 'reverse' }} />
         </div>

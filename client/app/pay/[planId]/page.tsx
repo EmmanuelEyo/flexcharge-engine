@@ -4,6 +4,7 @@
 import React, { useEffect, useState, use } from "react";
 import { API_BASE_URL } from "@/lib/constants";
 import Button from "@/components/ui/Button";
+import { LogoIcon } from "@/components/ui/LogoIcon";
 
 interface PublicPlan {
   _id: string;
@@ -132,7 +133,7 @@ export default function PayPage({
               <img src={plan.tenantId.logoUrl} alt={plan.tenantId.name || ""} className="h-10 mb-4" />
             ) : (
               <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center mb-4">
-                <span className="material-symbols-outlined text-indigo-600 text-2xl">bolt</span>
+                <LogoIcon className="w-7 h-7 text-indigo-600" />
               </div>
             )}
             <h1 className="text-2xl font-bold text-slate-900">{plan.tenantId?.name || "FlexCharge Merchant"}</h1>

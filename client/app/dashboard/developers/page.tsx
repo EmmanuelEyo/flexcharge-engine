@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import Button from "@/components/ui/Button";
 import api from "@/lib/api";
 import toast from "react-hot-toast";
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 
 interface ApiKey {
   _id: string;
@@ -25,6 +26,7 @@ function ApiKeysCard() {
   const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [keyToRevoke, setKeyToRevoke] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -63,14 +65,16 @@ function ApiKeysCard() {
     }
   };
 
-  const handleRevoke = async (id: string) => {
-    if (!confirm("Are you sure you want to revoke this key? Any integrations using it will immediately fail.")) return;
+  const handleRevoke = async () => {
+    if (!keyToRevoke) return;
     try {
-      await api.delete(`/auth/api-keys/${id}`);
+      await api.delete(`/auth/api-keys/${keyToRevoke}`);
       await fetchKeys();
       toast.success("API key revoked successfully!");
     } catch (err: any) {
       toast.error(err.message || "Failed to revoke key");
+    } finally {
+      setKeyToRevoke(null);
     }
   };
 
@@ -129,7 +133,7 @@ function ApiKeysCard() {
                       <p className="text-xs font-medium text-slate-500">Created</p>
                       <p className="text-xs text-slate-400">{new Date(key.createdAt).toLocaleDateString()}</p>
                     </div>
-                    <button onClick={() => handleRevoke(key._id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors flex items-center gap-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-red-200">
+                    <button onClick={() => setKeyToRevoke(key._id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors flex items-center gap-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-red-200">
                       <span className="material-symbols-outlined text-[18px]">delete</span>
                       <span className="hidden sm:inline">Revoke</span>
                     </button>
@@ -191,6 +195,15 @@ function ApiKeysCard() {
         </div>,
         document.body
       )}
+      <ConfirmationModal
+        isOpen={keyToRevoke !== null}
+        title="Revoke API Key"
+        message="Are you sure you want to revoke this key? Any integrations using it will immediately fail."
+        confirmLabel="Revoke Key"
+        variant="danger"
+        onConfirm={handleRevoke}
+        onCancel={() => setKeyToRevoke(null)}
+      />
     </>
   );
 }

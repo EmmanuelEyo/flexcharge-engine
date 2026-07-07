@@ -161,9 +161,23 @@ const endpointGroups: Array<{ title: string; items: EndpointDoc[] }> = [
       {
         method: "POST",
         route: "/api/subscriptions/:id/change-plan",
-        purpose: "Upgrade or downgrade a subscription.",
+        purpose: "Upgrade or downgrade a subscription synchronously.",
         inputs: "Path: id; body: newPlanId, changeDate?",
-        why: "Needed for proration and plan migration flows.",
+        why: "Needed for proration and plan migration flows. Upgrades require a saved card.",
+      },
+      {
+        method: "POST",
+        route: "/api/subscriptions/:id/change-plan-checkout",
+        purpose: "Generate an async checkout link for a plan upgrade.",
+        inputs: "Path: id; body: newPlanId",
+        why: "Allows developers to send users to a checkout flow to pay for the prorated upgrade difference.",
+      },
+      {
+        method: "POST",
+        route: "/api/subscriptions/:id/simulate-change",
+        purpose: "Simulate a plan change (Proration dry-run).",
+        inputs: "Path: id; body: newPlanId",
+        why: "Allows the client app to preview the cost differences and proration details before committing to a plan change.",
       },
     ],
   },
@@ -288,9 +302,19 @@ function SidebarLink({
   href: string;
   label: string;
 }) {
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    const targetId = href.replace("#", "");
+    const element = document.getElementById(targetId);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   return (
     <a
       href={href}
+      onClick={handleClick}
       className="flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-indigo-600"
     >
       {label}
@@ -386,7 +410,7 @@ export default function ApiDocsPage() {
               <div className="rounded-xl bg-slate-950 p-5 text-sm text-slate-200 shadow-inner">
                 <pre className="overflow-x-auto font-mono">
 {`curl http://localhost:7000/api/customers \\
-  -H "x-api-key: fck_live_xxxxxxxxxxxxxxxxx"`}
+  -H "x-api-key: flx_live_xxxxxxxxxxxxxxxxx"`}
                 </pre>
               </div>
             </div>

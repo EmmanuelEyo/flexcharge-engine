@@ -36,6 +36,7 @@ export interface IInvoice extends Document {
   failureReason?: string;
   isRenewal: boolean;
   idempotencyKey?: string;
+  targetPlanId?: Types.ObjectId;
 
   createdAt: Date;
 }
@@ -123,6 +124,10 @@ const invoiceSchema = new Schema<IInvoice>(
     idempotencyKey: {
       type: String,
       trim: true,
+    },
+    targetPlanId: {
+      type: Schema.Types.ObjectId,
+      ref: "Plan",
     },
   },
   {

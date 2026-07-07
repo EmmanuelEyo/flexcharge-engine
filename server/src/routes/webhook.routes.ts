@@ -3,6 +3,7 @@ import express from "express";
 import { Subscription } from "../models/Subscription.js";
 import { Customer } from "../models/Customer.js";
 import { Invoice } from "../models/Invoice.js";
+import { WebhookReceipt } from "../models/WebhookReceipt.js";
 import { nombaService } from "../services/nomba.service.js";
 import { queueWebhook } from "../services/webhook.service.js";
 import { calculateNextBillingDate } from "../services/billing.service.js";
@@ -151,6 +152,9 @@ router.post(
     // Immediately return 200 OK to acknowledge receipt after successful auth
     res.status(200).send("OK");
 
+    // Declared outside try/catch so the catch block can reference it
+    let webhookRequestId = "";
+
     try {
       // Parse the webhook payload
       let payload: any;
@@ -159,6 +163,52 @@ router.post(
       } catch {
         logger.warn("Webhook body is not valid JSON — ignoring");
         return;
+      }
+
+      // === IDEMPOTENCY CHECK ===
+      // Extract requestId from the parsed payload.
+      // If requestId exists, attempt to insert a WebhookReceipt.
+      // If the insert fails with a duplicate-key error (11000),
+      // this is a duplicate delivery — no-op and exit.
+      webhookRequestId = payload?.requestId || "";
+      const webhookEventType = payload?.event_type || "unknown";
+      const webhookOrderRef =
+        payload?.data?.order?.orderReference ||
+        payload?.data?.orderReference ||
+        payload?.orderReference ||
+        "";
+
+      if (webhookRequestId) {
+        try {
+          await WebhookReceipt.create({
+            requestId: webhookRequestId,
+            eventType: webhookEventType,
+            orderReference: webhookOrderRef,
+            status: "received",
+          });
+          logger.info(
+            { requestId: webhookRequestId, eventType: webhookEventType },
+            "Webhook receipt recorded — processing"
+          );
+        } catch (dedupeError: any) {
+          if (dedupeError?.code === 11000) {
+            logger.info(
+              { requestId: webhookRequestId, eventType: webhookEventType },
+              "Duplicate webhook requestId detected — skipping (idempotent no-op)"
+            );
+            return;
+          }
+          // Non-duplicate errors should not block processing — log and continue
+          logger.warn(
+            { requestId: webhookRequestId, error: dedupeError?.message },
+            "WebhookReceipt insert failed (non-duplicate) — proceeding with caution"
+          );
+        }
+      } else {
+        logger.warn(
+          { eventType: webhookEventType },
+          "Webhook payload missing requestId — cannot enforce idempotency"
+        );
       }
 
       // 1. Correct Webhook Extraction
@@ -336,44 +386,67 @@ router.post(
 
             (sub as any)._previousStatus = sub.status;
             sub.status = "active";
-
-            // Advance billing dates
-            const now = new Date();
-            const plan = sub.planId as any;
-            const newPeriodStart = sub.currentPeriodEnd || now;
-            const newPeriodEnd = calculateNextBillingDate(
-              newPeriodStart,
-              plan.interval as PlanInterval,
-              plan.intervalDays
-            );
-
-            sub.currentPeriodStart = newPeriodStart;
-            sub.currentPeriodEnd = newPeriodEnd;
-            sub.nextBillingDate = newPeriodEnd;
             sub.dunningAttemptCount = 0;
             sub.lastDunningAt = undefined;
-            await sub.save();
 
-            // Fire webhook
-            await queueWebhook(sub.tenantId, "subscription.renewed", {
-              subscriptionId: sub._id,
-              invoiceId: invoice._id,
-              recoveredViaManualPayment: true,
-              hasPaymentToken: !!sub.tokenKey,
-            });
+            if (invoice.targetPlanId) {
+              // --- Process Asynchronous Plan Upgrade ---
+              const oldPlanId = sub.planId;
+              sub.planId = invoice.targetPlanId as any;
+              
+              // Do NOT advance billing dates for mid-cycle plan changes
+              await sub.save();
 
-            // Send receipt email
+              await queueWebhook(sub.tenantId, "subscription.updated", {
+                subscriptionId: sub._id,
+                oldPlanId: oldPlanId,
+                newPlanId: invoice.targetPlanId,
+                reason: "plan_upgrade",
+                invoiceId: invoice._id,
+              });
+
+              logger.info(
+                { subscriptionId: sub._id, invoiceId: invoice._id, newPlanId: invoice.targetPlanId },
+                "Asynchronous plan upgrade payment processed successfully"
+              );
+            } else {
+              // --- Process Manual Renewal ---
+              // Advance billing dates
+              const now = new Date();
+              const plan = sub.planId as any;
+              const newPeriodStart = sub.currentPeriodEnd || now;
+              const newPeriodEnd = calculateNextBillingDate(
+                newPeriodStart,
+                plan.interval as PlanInterval,
+                plan.intervalDays
+              );
+
+              sub.currentPeriodStart = newPeriodStart;
+              sub.currentPeriodEnd = newPeriodEnd;
+              sub.nextBillingDate = newPeriodEnd;
+              await sub.save();
+
+              // Fire webhook
+              await queueWebhook(sub.tenantId, "subscription.renewed", {
+                subscriptionId: sub._id,
+                invoiceId: invoice._id,
+                recoveredViaManualPayment: true,
+                hasPaymentToken: !!sub.tokenKey,
+              });
+
+              logger.info(
+                { subscriptionId: sub._id, invoiceId: invoice._id },
+                "Manual renewal payment processed successfully"
+              );
+            }
+
+            // Send receipt email for both
             await queueEmail("customer", "receipt", {
               tenantId: sub.tenantId,
               customerId: sub.customerId as any,
               subscriptionId: sub._id,
               invoiceId: invoice._id,
             });
-
-            logger.info(
-              { subscriptionId: sub._id, invoiceId: invoice._id },
-              "Manual renewal payment processed successfully"
-            );
           }
         } else if (invoice) {
           logger.info(
@@ -504,6 +577,16 @@ router.post(
       };
       await queueEmail("customer", "welcome", emailContext);
       await queueEmail("tenant", "new_subscriber", emailContext);
+
+      // Mark the webhook receipt as fully processed
+      if (webhookRequestId) {
+        await WebhookReceipt.updateOne(
+          { requestId: webhookRequestId },
+          { $set: { status: "processed" } }
+        ).catch((err: any) =>
+          logger.warn({ requestId: webhookRequestId, error: err?.message }, "Failed to mark webhook receipt as processed")
+        );
+      }
     } catch (error) {
       logger.error(
         {
@@ -512,6 +595,16 @@ router.post(
         },
         "Error processing Nomba webhook"
       );
+
+      // Mark the webhook receipt as failed so a retry can be attempted
+      if (webhookRequestId) {
+        await WebhookReceipt.updateOne(
+          { requestId: webhookRequestId },
+          { $set: { status: "failed" } }
+        ).catch((err: any) =>
+          logger.warn({ requestId: webhookRequestId, error: err?.message }, "Failed to mark webhook receipt as failed")
+        );
+      }
     }
   }
 );
