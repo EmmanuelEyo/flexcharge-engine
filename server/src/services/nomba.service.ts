@@ -1089,12 +1089,14 @@ class NombaService {
     merchantTxRef: string;
     senderName: string;
     narration: string;
+    accountId?: string;
   }): Promise<{ status: string; transferId: string }> {
     const authHeaders = await this.getAuthHeaders();
     const amountInNaira = (params.amount / 100).toFixed(2);
+    const subAccountId = params.accountId ?? env.NOMBA_SUB_ACCOUNT_ID;
 
     const response = await this.client.post(
-      `/v2/transfers/bank`,
+      `/v2/transfers/bank/${subAccountId}`,
       {
         amount: amountInNaira,
         accountNumber: params.accountNumber,

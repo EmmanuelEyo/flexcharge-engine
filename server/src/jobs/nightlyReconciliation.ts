@@ -339,17 +339,40 @@ export function defineNightlyReconciliationJob(agenda: Agenda): void {
           // Only flag if the invoice has Nomba references at all
           // (wallet top-ups and other internal operations may not have them)
           if (inv.nombaOrderReference || inv.nombaTransactionId) {
-            anomalies.push({
-              type: "MISSING_NOMBA",
-              details: {
-                invoiceId: inv._id,
-                nombaOrderReference: inv.nombaOrderReference,
-                nombaTransactionId: inv.nombaTransactionId,
-                internalAmountKobo: inv.amount,
-                tenantId: inv.tenantId,
-                message: "Paid invoice exists internally but no matching Nomba transaction found",
-              },
-            });
+            let recoveredViaFallback = false;
+            try {
+              if (inv.nombaOrderReference) {
+                const checkoutTransaction = await nombaService.fetchCheckoutTransaction(inv.nombaOrderReference, "ORDER_REFERENCE");
+                if (checkoutTransaction.success) recoveredViaFallback = true;
+              } else if (inv.nombaTransactionId) {
+                const checkoutTransaction = await nombaService.fetchCheckoutTransaction(inv.nombaTransactionId, "ORDER_ID");
+                if (checkoutTransaction.success) recoveredViaFallback = true;
+              }
+            } catch (fallbackErr) {
+              logger.warn(
+                { error: fallbackErr instanceof Error ? fallbackErr.message : "Unknown", invoiceId: inv._id },
+                "Fallback check failed during reconciliation"
+              );
+            }
+
+            if (recoveredViaFallback) {
+              logger.info(
+                { invoiceId: inv._id, nombaOrderReference: inv.nombaOrderReference, nombaTransactionId: inv.nombaTransactionId },
+                "Reconciliation recovered missing transaction via fallback individual check"
+              );
+            } else {
+              anomalies.push({
+                type: "MISSING_NOMBA",
+                details: {
+                  invoiceId: inv._id,
+                  nombaOrderReference: inv.nombaOrderReference,
+                  nombaTransactionId: inv.nombaTransactionId,
+                  internalAmountKobo: inv.amount,
+                  tenantId: inv.tenantId,
+                  message: "Paid invoice exists internally but no matching Nomba transaction found",
+                },
+              });
+            }
           }
         }
       }
