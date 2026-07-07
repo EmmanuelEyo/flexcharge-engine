@@ -85,7 +85,7 @@ export default function DashboardPage() {
           return {
             id: inv._id,
             customer: inv.customerId?.name || "Unknown Customer",
-            plan: inv.subscriptionId?.planId?.toString() || "Unknown Plan",
+            plan: inv.subscriptionId?.planId?.name || inv.description || "Unknown Plan",
             amount: formatCurrency(inv.amount),
             status,
             date: new Date(inv.createdAt).toLocaleDateString("en-US", {

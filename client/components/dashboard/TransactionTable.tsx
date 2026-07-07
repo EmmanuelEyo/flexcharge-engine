@@ -106,6 +106,17 @@ export default function TransactionTable({
   const isLastPage = to >= totalEntries;
 
   const handlePrintInvoice = (tx: Transaction) => {
+    let tenantName = "FlexCharge Merchant";
+    try {
+      const stored = localStorage.getItem("fc_user");
+      if (stored) {
+        const tenant = JSON.parse(stored);
+        if (tenant?.name) tenantName = tenant.name;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
@@ -129,7 +140,7 @@ export default function TransactionTable({
           </style>
         </head>
         <body>
-          <h1>FlexCharge Invoice</h1>
+          <h1>Invoice from ${tenantName}</h1>
           <div class="meta">
             <p>Invoice ID: ${tx.id}</p>
             <p>Date: ${tx.date}</p>

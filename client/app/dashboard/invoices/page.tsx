@@ -61,13 +61,91 @@ export default function InvoicesPage() {
   };
 
   const printInvoice = (invoiceId: string) => {
-    const url = `/portal/invoices/${invoiceId}`;
-    const printWindow = window.open(url, "_blank");
-    if (printWindow) {
-      printWindow.onload = () => {
-        printWindow.print();
-      };
+    const inv = invoices.find(i => i._id === invoiceId);
+    if (!inv) return;
+
+    let tenantName = inv.tenantId?.name || "FlexCharge Merchant";
+    if (!inv.tenantId?.name) {
+      try {
+        const stored = localStorage.getItem("fc_user");
+        if (stored) {
+          const tenant = JSON.parse(stored);
+          if (tenant?.name) tenantName = tenant.name;
+        }
+      } catch (e) {
+        console.error(e);
+      }
     }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const formattedDate = new Date(inv.createdAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    });
+
+    const planName = inv.subscriptionId?.planId?.name || inv.description || "Unknown Plan";
+
+    const html = `
+      <html>
+        <head>
+          <title>Invoice - ${inv.invoiceNumber || inv._id.slice(-8).toUpperCase()}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #0f172a; max-width: 600px; margin: 0 auto; line-height: 1.5; }
+            h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; color: #0f172a; }
+            .meta { color: #64748b; font-size: 14px; margin-bottom: 32px; }
+            .meta p { margin: 4px 0; }
+            .row { display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding: 16px 0; font-size: 15px; }
+            .row:last-child { border-bottom: none; }
+            .total { font-weight: 600; font-size: 18px; margin-top: 16px; border-top: 2px solid #e2e8f0; border-bottom: none; }
+            .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; text-transform: capitalize; }
+            .badge-paid { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+            .badge-pending { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+            .badge-refunded { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+            .badge-failed { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+            .footer { margin-top: 48px; text-align: center; color: #94a3b8; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <h1>Invoice from ${tenantName}</h1>
+          <div class="meta">
+            <p>Invoice ID: ${inv.invoiceNumber || inv._id.slice(-8).toUpperCase()}</p>
+            <p>Date: ${formattedDate}</p>
+            <p>Billed to: ${inv.customerId?.name || "Unknown Customer"} (${inv.customerId?.email || ""})</p>
+          </div>
+          
+          <div class="row">
+            <span style="color: #64748b">Plan / Description</span>
+            <span>${planName}</span>
+          </div>
+
+          <div class="row">
+            <span style="color: #64748b">Status</span>
+            <span class="badge badge-${inv.status}">${inv.status}</span>
+          </div>
+          
+          <div class="row total">
+            <span>Total Amount</span>
+            <span>${formatCurrency(inv.amount)}</span>
+          </div>
+          
+          <div class="footer">
+            <p>Powered by FlexCharge</p>
+          </div>
+          
+          <script>
+            window.onload = () => {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   const formatCurrency = (kobo: number) => {
