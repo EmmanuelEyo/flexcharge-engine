@@ -142,8 +142,33 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
     });
   } catch (createError: any) {
     // MongoDB duplicate key error — another job execution already created
-    // this invoice. Treat as "already billed for this period" and skip.
+    // this invoice. Auto-renewals can safely skip, but manual renewals must
+    // reuse the existing reminder invoice so the billing cycle can still
+    // transition into dunning on the due date.
     if (createError?.code === 11000) {
+      const existingInvoice = await Invoice.findOne({ idempotencyKey });
+
+      if (
+        existingInvoice &&
+        (subscription.renewalMode === "manual" || !subscription.tokenKey)
+      ) {
+        logger.info(
+          {
+            subscriptionId,
+            invoiceId: existingInvoice._id,
+            idempotencyKey,
+          },
+          "Manual renewal invoice already exists — reusing reminder invoice"
+        );
+
+        return await processManualRenewal(
+          subscription,
+          existingInvoice,
+          customer,
+          plan
+        );
+      }
+
       logger.warn(
         { subscriptionId, idempotencyKey },
         "Duplicate billing attempt detected (concurrent job) — skipping"
@@ -155,7 +180,7 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
 
   // === MANUAL RENEWAL FLOW ===
   if (subscription.renewalMode === "manual" || !subscription.tokenKey) {
-    return await triggerManualRenewal(subscription, invoice, customer, plan, orderReference);
+    return await processManualRenewal(subscription, invoice, customer, plan);
   }
 
   // === AUTO RENEWAL FLOW ===
@@ -221,8 +246,8 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
         );
         subscription.renewalMode = "manual";
         await subscription.save();
-        
-        return await triggerManualRenewal(subscription, invoice, customer, plan, orderReference);
+
+        return await processManualRenewal(subscription, invoice, customer, plan);
       }
     }
 
@@ -542,60 +567,78 @@ export async function sendUpcomingRenewalReminders(daysAhead: number = 3): Promi
  * placing the subscription into past_due (if active), creating a 
  * manual dunning record, and queueing a manual invoice email.
  */
-async function triggerManualRenewal(
+async function processManualRenewal(
   subscription: any,
   invoice: any,
   customer: any,
-  plan: any,
-  orderReference: string
+  plan: any
 ): Promise<{ success: boolean; invoiceId?: Types.ObjectId; error?: string }> {
   try {
-    const checkoutResult = await nombaService.createCheckoutOrder({
-      orderReference,
-      amount: plan.amount,
-      currency: plan.currency || "NGN",
-      customerEmail: customer.email,
-      callbackUrl: `${env.FRONTEND_URL}/success?orderRef=${orderReference}`,
-      tokenizeCard: false,
-    });
+    const orderReference =
+      invoice.nombaOrderReference || `inv_${subscription._id}_${Date.now()}`;
+    let createdCheckoutLink = false;
 
-    invoice.checkoutLink = checkoutResult.checkoutLink;
-    await invoice.save();
+    // If the upcoming reminder already created a checkout link, reuse it.
+    // Otherwise, generate the checkout order now for the due renewal.
+    if (!invoice.checkoutLink) {
+      const checkoutResult = await nombaService.createCheckoutOrder({
+        orderReference,
+        amount: plan.amount,
+        currency: plan.currency || "NGN",
+        customerEmail: customer.email,
+        callbackUrl: `${env.FRONTEND_URL}/success?orderRef=${orderReference}`,
+        tokenizeCard: false,
+      });
+
+      invoice.checkoutLink = checkoutResult.checkoutLink;
+      invoice.nombaOrderReference = orderReference;
+      await invoice.save();
+      createdCheckoutLink = true;
+    }
 
     // Transition subscription to past_due
     if (subscription.status === "active") {
       (subscription as any)._previousStatus = subscription.status;
       subscription.status = "past_due";
     }
-    subscription.dunningAttemptCount = 1;
+    subscription.dunningAttemptCount = Math.max(subscription.dunningAttemptCount || 0, 1);
     subscription.lastDunningAt = new Date();
     await subscription.save();
 
     // Create DunningAttempt record for manual reminders
-    const retryDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // +24h default
-    await DunningAttempt.create({
-      tenantId: subscription.tenantId,
-      subscriptionId: subscription._id,
+    const existingAttempt = await DunningAttempt.findOne({
       invoiceId: invoice._id,
-      attemptNumber: 1,
-      scheduledFor: retryDate,
-      status: "scheduled",
-      failureReason: "Awaiting manual payment",
-      nextRetryAt: retryDate,
       retryStrategy: "manual",
     });
 
+    if (!existingAttempt) {
+      const retryDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // +24h default
+      await DunningAttempt.create({
+        tenantId: subscription.tenantId,
+        subscriptionId: subscription._id,
+        invoiceId: invoice._id,
+        attemptNumber: subscription.dunningAttemptCount,
+        scheduledFor: retryDate,
+        status: "scheduled",
+        failureReason: "Awaiting manual payment",
+        nextRetryAt: retryDate,
+        retryStrategy: "manual",
+      });
+    }
+
     // Send manual invoice email
-    await queueEmail("customer", "manual_invoice", {
-      tenantId: subscription.tenantId,
-      customerId: customer._id,
-      subscriptionId: subscription._id,
-      invoiceId: invoice._id,
-    });
+    if (createdCheckoutLink) {
+      await queueEmail("customer", "manual_invoice", {
+        tenantId: subscription.tenantId,
+        customerId: customer._id,
+        subscriptionId: subscription._id,
+        invoiceId: invoice._id,
+      });
+    }
 
     logger.info(
       { subscriptionId: subscription._id, invoiceId: invoice._id },
-      "Created manual renewal invoice and entered dunning"
+      "Manual renewal invoice prepared and subscription entered dunning"
     );
 
     return { success: true, invoiceId: invoice._id };

@@ -21,6 +21,7 @@ import { renderToString } from "react-dom/server";
 import { WelcomeEmail } from "../emails/customer/WelcomeEmail.js";
 
 const originalChargeTokenizedCard = nombaService.chargeTokenizedCard;
+const originalCreateCheckoutOrder = nombaService.createCheckoutOrder;
 const originalCreditTenant = ledgerService.creditTenant;
 
 async function seedRenewalFixture() {
@@ -341,6 +342,67 @@ test("Billing Service", async (t) => {
       const countSecondRun = await sendUpcomingRenewalReminders(3);
       assert.strictEqual(countSecondRun, 0);
       assert.strictEqual(createCheckoutCalls, 1);
+    } finally {
+      nombaService.createCheckoutOrder = originalCreateCheckoutOrder;
+    }
+  });
+
+  await t.test("reuses an existing manual reminder invoice when renewal runs", async () => {
+    console.log("[BILLING][TEST] reusing manual reminder invoices during renewal");
+
+    const { subscription, currentPeriodEnd } = await seedRenewalFixture();
+
+    subscription.renewalMode = "manual";
+    subscription.tokenKey = undefined;
+    subscription.nextBillingDate = new Date(Date.now() - 60 * 1000);
+    await subscription.save();
+
+    const checkoutCalls: any[] = [];
+    nombaService.createCheckoutOrder = (async (params: any) => {
+      checkoutCalls.push(params);
+      return {
+        orderReference: params.orderReference,
+        checkoutLink: "https://pay.nomba.com/checkout/manual-reuse",
+      };
+    }) as any;
+
+    try {
+      const reminderCount = await sendUpcomingRenewalReminders(3);
+      assert.strictEqual(reminderCount, 1);
+      assert.strictEqual(checkoutCalls.length, 1);
+
+      const reminderInvoice = await Invoice.findOne({ subscriptionId: subscription._id });
+      assert.ok(reminderInvoice);
+      assert.strictEqual(reminderInvoice?.status, "pending");
+      assert.strictEqual(reminderInvoice?.checkoutLink, "https://pay.nomba.com/checkout/manual-reuse");
+
+      nombaService.createCheckoutOrder = (async () => {
+        throw new Error("renewal should reuse the existing reminder invoice");
+      }) as any;
+
+      const result = await processRenewal(subscription._id as Types.ObjectId);
+
+      assert.strictEqual(result.success, true);
+      assert.ok(result.invoiceId);
+
+      const updated = await Subscription.findById(subscription._id);
+      assert.ok(updated);
+      assert.strictEqual(updated?.status, "past_due");
+      assert.strictEqual(updated?.dunningAttemptCount, 1);
+      assert.strictEqual(
+        updated?.currentPeriodEnd?.toISOString(),
+        currentPeriodEnd.toISOString()
+      );
+      assert.ok(updated?.nextBillingDate);
+      assert.ok((updated?.nextBillingDate?.getTime() ?? 0) <= Date.now());
+
+      const invoices = await Invoice.find({ subscriptionId: subscription._id });
+      assert.strictEqual(invoices.length, 1);
+
+      const attempt = await DunningAttempt.findOne({ subscriptionId: subscription._id });
+      assert.ok(attempt);
+      assert.strictEqual(attempt?.retryStrategy, "manual");
+      assert.strictEqual(attempt?.status, "scheduled");
     } finally {
       nombaService.createCheckoutOrder = originalCreateCheckoutOrder;
     }
