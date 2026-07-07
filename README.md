@@ -2,12 +2,23 @@
 
 FlexCharge is a subscription billing and wallet engine built to sit on top of a payment provider while keeping the merchant experience focused on business state, not gateway mechanics.
 
+THIS IS THE LINK TO THE DEMO VIDEO: https://drive.google.com/file/d/1x70xIqRTQ4AxrfNx_BaGH1fCWoP4lUIx/view?usp=sharing
+
+THIS IS THE LINK TO A MORE DETAILED ARCHITECTURE DOCUMENT: https://docs.google.com/document/d/1Jzcxwv_XfLjShzZdecFPxGYOT2auqlBOfOlPddrP5PI/edit?usp=sharing
+
+
 ## Demo Credentials
 
 Use the following seeded credentials to explore the dashboard during judging:
 
 - Email: `admin@acme.com`
 - Password: `SecurePassword@12345`
+
+for the swagger docs:
+- Username: admin
+- password: hackathon2026
+
+
 
 The platform lets a business:
 
