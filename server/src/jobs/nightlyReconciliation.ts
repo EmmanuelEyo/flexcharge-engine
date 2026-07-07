@@ -65,28 +65,30 @@ export function defineNightlyReconciliationJob(agenda: Agenda): void {
         return;
       }
 
-      let page = 0;
+      let cursor: string | undefined = undefined;
       let hasMore = true;
+      let pageCount = 0;
       while (hasMore) {
         try {
           const result = await nombaService.getSubaccountTransactions(
             startDateStr,
             endDateStr,
-            page,
+            cursor,
             100
           );
           nombaTransactions.push(...result.transactions);
+          cursor = result.nextCursor ?? undefined;
           hasMore = result.hasMore;
-          page++;
+          pageCount++;
 
           // Safety: cap at 50 pages (5000 transactions) to prevent infinite loops
-          if (page >= 50) {
+          if (pageCount >= 50) {
             logger.warn("Reconciliation page limit reached (50 pages) — stopping pagination");
             break;
           }
         } catch (fetchError) {
           logger.error(
-            { error: fetchError instanceof Error ? fetchError.message : "Unknown", page },
+            { error: fetchError instanceof Error ? fetchError.message : "Unknown", pageCount },
             "Failed to fetch Nomba transactions page for reconciliation"
           );
           // If we can't fetch from Nomba, abort this run rather than producing false positives

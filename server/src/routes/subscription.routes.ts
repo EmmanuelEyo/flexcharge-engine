@@ -10,6 +10,7 @@ import {
   pauseSubscription,
   resumeSubscription,
   chargeNow,
+  requestPortalLink,
 } from "../controllers/subscription.controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
@@ -31,6 +32,13 @@ router.post("/public-checkout", async (req, res, next) => {
   const { publicCheckout } = await import("../controllers/subscription.controller.js");
   return publicCheckout(req, res, next);
 });
+
+/**
+ * Public Portal Link Request
+ * POST /subscriptions/request-portal-link — Sends portal magic link after checkout
+ * No auth required — resolves customer from orderRef or subscriptionId.
+ */
+router.post("/request-portal-link", requestPortalLink);
 
 router.use(authenticate);
 

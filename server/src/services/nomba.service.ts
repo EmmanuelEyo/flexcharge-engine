@@ -1627,15 +1627,19 @@ class NombaService {
    * Used by the nightly reconciliation job to compare Nomba's
    * authoritative transaction records against our internal ledger.
    *
-   * @param startDate - ISO 8601 date string (inclusive start)
-   * @param endDate   - ISO 8601 date string (inclusive end)
-   * @param page      - 0-indexed page number (defaults to 0)
-   * @param limit     - Items per page (defaults to 100)
+   * IMPORTANT: Nomba's GET /v1/transactions/accounts/{accountId} endpoint
+   * uses dateFrom/dateTo (NOT startDate/endDate) for date filtering, and
+   * cursor-based pagination (NOT page-number pagination).
+   *
+   * @param dateFrom  - ISO 8601 date string (inclusive start, e.g. "2026-07-08T00:00:00.000Z")
+   * @param dateTo    - ISO 8601 date string (inclusive end,   e.g. "2026-07-08T23:59:59.999Z")
+   * @param cursor    - Opaque cursor string for the next page (undefined = first page)
+   * @param limit     - Items per page (defaults to 100, max 100)
    */
   async getSubaccountTransactions(
-    startDate: string,
-    endDate: string,
-    page: number = 0,
+    dateFrom: string,
+    dateTo: string,
+    cursor?: string,
     limit: number = 100
   ): Promise<{
     transactions: Array<{
@@ -1648,21 +1652,28 @@ class NombaService {
       createdAt?: string;
     }>;
     totalCount: number;
-    currentPage: number;
+    nextCursor: string | null;
     hasMore: boolean;
   }> {
     const authHeaders = await this.getAuthHeaders();
     const subAccountId = env.NOMBA_SUB_ACCOUNT_ID;
 
+    // Build query params — use dateFrom/dateTo (Nomba's actual param names).
+    // startDate/endDate are silently ignored by the API, causing it to return
+    // the most recent page of all-time transactions regardless of date.
+    const queryParams: Record<string, string | number> = {
+      dateFrom,
+      dateTo,
+      limit,
+    };
+    if (cursor) {
+      queryParams.cursor = cursor;
+    }
+
     const response = await this.client.get(
       `/v1/transactions/accounts/${subAccountId}`,
       {
-        params: {
-          startDate,
-          endDate,
-          page,
-          limit,
-        },
+        params: queryParams,
         headers: authHeaders,
       }
     );
@@ -1686,15 +1697,22 @@ class NombaService {
     }
 
     const totalCount = data?.totalCount ?? data?.total ?? transactions.length;
-    const hasMore = transactions.length === limit;
+
+    // Nomba uses cursor-based pagination. The next page cursor is returned as
+    // data.nextCursor (or data.cursor). A null/empty cursor means no more pages.
+    // Do NOT use `transactions.length === limit` as a hasMore heuristic —
+    // it incorrectly continues paginating when the last page happens to be full.
+    const nextCursor: string | null = data?.nextCursor || data?.cursor || null;
+    const hasMore = !!(nextCursor && nextCursor !== "0" && nextCursor !== "");
 
     logger.info(
       {
-        startDate,
-        endDate,
-        page,
+        dateFrom,
+        dateTo,
+        cursor: cursor ?? "(first page)",
         fetched: transactions.length,
         totalCount,
+        hasMore,
       },
       "Nomba sub-account transactions fetched for reconciliation"
     );
@@ -1710,7 +1728,7 @@ class NombaService {
         createdAt: tx.createdAt || tx.time || tx.transactionDate || "",
       })),
       totalCount,
-      currentPage: page,
+      nextCursor,
       hasMore,
     };
   }

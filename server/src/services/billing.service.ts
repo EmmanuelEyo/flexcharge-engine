@@ -98,6 +98,13 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
     return { success: false, error: `Subscription is ${subscription.status}, not active` };
   }
 
+  if (subscription.cancelAtPeriodEnd) {
+    return {
+      success: false,
+      error: "Subscription is scheduled to cancel at period end and must not be renewed",
+    };
+  }
+
   const plan = subscription.planId as any;
   const customer = subscription.customerId as any;
 
@@ -105,36 +112,46 @@ export async function processRenewal(subscriptionId: Types.ObjectId): Promise<{
     return { success: false, error: "Plan or customer not found" };
   }
 
-  // Generate idempotency key to prevent double charges
+  // Generate idempotency key to prevent double charges.
+  // Anchored to the subscription ID + the current period end date (YYYY-MM-DD).
   const periodEndStr = subscription.currentPeriodEnd
     ? subscription.currentPeriodEnd.toISOString().split("T")[0]
     : Date.now().toString();
   const idempotencyKey = `bill_${subscription._id}_${periodEndStr}`;
 
-  // Check if we already billed for this period
-  const existingInvoice = await Invoice.findOne({ idempotencyKey });
-  if (existingInvoice) {
-    logger.warn(
-      { subscriptionId, idempotencyKey },
-      "Duplicate billing attempt detected — skipping"
-    );
-    return { success: false, error: "Already billed for this period" };
-  }
-
-  // Create pending invoice
+  // ATOMIC duplicate guard — attempt to create the invoice directly.
+  // The Invoice collection has a unique sparse index on idempotencyKey.
+  // If two concurrent job executions race here, MongoDB will reject the
+  // second insert with error code 11000 (duplicate key), which we catch below.
+  // This is the same pattern used by WebhookReceipt for inbound idempotency
+  // and avoids the TOCTOU window of a findOne-then-create approach.
   const orderReference = `inv_${subscription._id}_${Date.now()}`;
-  const invoice = await Invoice.create({
-    tenantId: subscription.tenantId,
-    subscriptionId: subscription._id,
-    customerId: customer._id,
-    amount: plan.amount,
-    currency: plan.currency || "NGN",
-    status: "pending",
-    nombaOrderReference: orderReference,
-    description: `${plan.name} — Renewal`,
-    isRenewal: true,
-    idempotencyKey,
-  });
+  let invoice: InstanceType<typeof Invoice>;
+  try {
+    invoice = await Invoice.create({
+      tenantId: subscription.tenantId,
+      subscriptionId: subscription._id,
+      customerId: customer._id,
+      amount: plan.amount,
+      currency: plan.currency || "NGN",
+      status: "pending",
+      nombaOrderReference: orderReference,
+      description: `${plan.name} — Renewal`,
+      isRenewal: true,
+      idempotencyKey,
+    });
+  } catch (createError: any) {
+    // MongoDB duplicate key error — another job execution already created
+    // this invoice. Treat as "already billed for this period" and skip.
+    if (createError?.code === 11000) {
+      logger.warn(
+        { subscriptionId, idempotencyKey },
+        "Duplicate billing attempt detected (concurrent job) — skipping"
+      );
+      return { success: false, error: "Already billed for this period" };
+    }
+    throw createError;
+  }
 
   // === MANUAL RENEWAL FLOW ===
   if (subscription.renewalMode === "manual" || !subscription.tokenKey) {

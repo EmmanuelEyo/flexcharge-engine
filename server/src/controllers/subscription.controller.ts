@@ -28,6 +28,7 @@ import { creditWallet, createWallet } from "../services/wallet.service.js";
 import { queueWebhook } from "../services/webhook.service.js";
 import { queueEmail } from "../utils/emailDispatcher.js";
 import { calculateNextBillingDate } from "../services/billing.service.js";
+import jwt from "jsonwebtoken";
 
 /**
  * Subscription Controller — Manages the full subscription lifecycle.
@@ -414,6 +415,89 @@ export async function publicCheckout(
     }
 
     sendCreated(res, { subscriptionId: subscription._id, checkoutLink });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /subscriptions/request-portal-link
+ * Public endpoint — called from the hosted success page after checkout.
+ *
+ * Accepts an orderRef (appended by Nomba to the callback URL) or subscriptionId,
+ * resolves the customer without requiring tenant authentication, generates a
+ * short-lived portal JWT, and dispatches the magic-link email to the customer.
+ *
+ * Rate-limited by the global API limiter. No auth required.
+ */
+export async function requestPortalLink(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { orderRef, subscriptionId } = req.body;
+
+    if (!orderRef && !subscriptionId) {
+      throw new AppError("orderRef or subscriptionId is required", 400);
+    }
+
+    let customerId: Types.ObjectId | undefined;
+    let tenantId: Types.ObjectId | undefined;
+
+    if (orderRef) {
+      // Resolve via Invoice using the Nomba order reference
+      const invoice = await Invoice.findOne({ nombaOrderReference: orderRef });
+      if (!invoice) {
+        // Return a generic 200 to avoid leaking whether an orderRef exists
+        sendSuccess(res, { message: "If that reference is valid, a portal link has been sent." });
+        return;
+      }
+      customerId = invoice.customerId;
+      tenantId = invoice.tenantId;
+    } else {
+      const sub = await Subscription.findById(subscriptionId).lean();
+      if (!sub) {
+        sendSuccess(res, { message: "If that reference is valid, a portal link has been sent." });
+        return;
+      }
+      customerId = sub.customerId as Types.ObjectId;
+      tenantId = sub.tenantId as Types.ObjectId;
+    }
+
+    const customer = await Customer.findById(customerId).lean();
+    if (!customer) {
+      sendSuccess(res, { message: "If that reference is valid, a portal link has been sent." });
+      return;
+    }
+
+    // Generate a portal JWT — same logic as POST /portal/sessions
+    const portalToken = jwt.sign(
+      {
+        customerId: customerId!.toString(),
+        tenantId: tenantId!.toString(),
+        type: "portal",
+      },
+      env.PORTAL_JWT_SECRET,
+      { expiresIn: env.PORTAL_JWT_EXPIRES_IN as any }
+    );
+
+    const portalUrl = `${env.FRONTEND_URL}/portal?token=${portalToken}`;
+
+    await queueEmail("customer", "portal_link", {
+      tenantId: tenantId!,
+      customerId: customerId!,
+      portalUrl,
+    } as any);
+
+    logger.info(
+      { customerId, tenantId },
+      "Portal magic link dispatched via public request-portal-link endpoint"
+    );
+
+    sendSuccess(res, {
+      message: "A portal access link has been sent to your email.",
+    });
   } catch (error) {
     next(error);
   }
@@ -825,6 +909,13 @@ export async function chargeNow(
     if (!["active", "past_due"].includes(subscription.status)) {
       throw new AppError(
         `Cannot charge a subscription with status '${subscription.status}'. Only 'active' or 'past_due' subscriptions can be charged.`,
+        422
+      );
+    }
+
+    if (subscription.cancelAtPeriodEnd) {
+      throw new AppError(
+        "Cannot renew a subscription that is scheduled to cancel at period end.",
         422
       );
     }

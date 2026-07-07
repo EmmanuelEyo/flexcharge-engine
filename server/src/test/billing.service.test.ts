@@ -133,6 +133,19 @@ test("Billing Service", async (t) => {
     assert.strictEqual((due[0]!.customerId as any).email, customer.email);
   });
 
+  await t.test("does not include cancel-at-period-end subscriptions in due scans", async () => {
+    console.log("[BILLING][TEST] excluding scheduled cancellations from renewal scans");
+
+    const { subscription } = await seedRenewalFixture();
+    subscription.nextBillingDate = new Date(Date.now() - 60 * 1000);
+    subscription.cancelAtPeriodEnd = true;
+    await subscription.save();
+
+    const due = await findDueSubscriptions();
+
+    assert.strictEqual(due.length, 0);
+  });
+
   await t.test("processes a successful renewal and advances the billing cycle", async () => {
     console.log("[BILLING][TEST] processing renewal success path");
 
@@ -179,6 +192,37 @@ test("Billing Service", async (t) => {
         updated?.nextBillingDate?.toISOString(),
         calculateNextBillingDate(currentPeriodEnd, plan.interval).toISOString()
       );
+    } finally {
+      nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
+    }
+  });
+
+  await t.test("skips renewal when the subscription is scheduled to cancel at period end", async () => {
+    console.log("[BILLING][TEST] refusing renewal for scheduled cancellations");
+
+    const { subscription } = await seedRenewalFixture();
+    subscription.cancelAtPeriodEnd = true;
+    await subscription.save();
+
+    let chargeCount = 0;
+    nombaService.chargeTokenizedCard = (async () => {
+      chargeCount += 1;
+      return {
+        success: true,
+        message: "should not be called",
+        transactionId: "txn_should_not_run",
+      };
+    }) as any;
+
+    try {
+      const result = await processRenewal(subscription._id as Types.ObjectId);
+
+      assert.strictEqual(result.success, false);
+      assert.ok(result.error?.includes("scheduled to cancel at period end"));
+      assert.strictEqual(chargeCount, 0);
+
+      const invoices = await Invoice.find({ subscriptionId: subscription._id });
+      assert.strictEqual(invoices.length, 0);
     } finally {
       nombaService.chargeTokenizedCard = originalChargeTokenizedCard;
     }
