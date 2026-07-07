@@ -821,13 +821,15 @@ class NombaService {
       statusRaw === "true" ||
       (typeof statusRaw === "string" && statusRaw.toLowerCase() === "true");
 
-    // We only consider it a full success if topLevelStatus is true (or undefined) AND inner data.status is true
-    const success = outerSuccess && isTopLevelSuccess && innerSuccess;
-    
-    // Check if the response explicitly requires an OTP
-    const requiresOTP = outerSuccess && !isTopLevelSuccess && 
-                        typeof data?.message === "string" && 
-                        data.message.toLowerCase().includes("otp");
+    // We consider the charge successful when Nomba returns a successful outer code
+    // and the nested payload confirms success. Some successful responses carry
+    // top-level `status: false`, so we must not use that field as a hard failure gate.
+    const success = outerSuccess && innerSuccess;
+
+    // Only treat the response as OTP-gated when the charge is not already successful
+    // and Nomba explicitly says OTP is required.
+    const messageText = typeof data?.message === "string" ? data.message.toLowerCase() : "";
+    const requiresOTP = outerSuccess && !success && messageText.includes("otp");
 
     const message = data?.message ?? description ?? (success ? "success" : "failed");
 
@@ -1762,4 +1764,3 @@ class NombaService {
 
 // Export a singleton instance
 export const nombaService = new NombaService();
-

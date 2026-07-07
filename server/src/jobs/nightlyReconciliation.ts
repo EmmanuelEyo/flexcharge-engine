@@ -1,6 +1,10 @@
 import { Agenda } from "agenda";
 import { Invoice } from "../models/Invoice.js";
 import { LedgerTransaction } from "../models/LedgerTransaction.js";
+import { Wallet } from "../models/Wallet.js";
+import { WalletTransaction } from "../models/WalletTransaction.js";
+import { creditWallet } from "../services/wallet.service.js";
+import { ledgerService } from "../services/ledger.service.js";
 import { nombaService } from "../services/nomba.service.js";
 import { queueEmail } from "../utils/emailDispatcher.js";
 import { logger } from "../utils/logger.js";
@@ -25,6 +29,143 @@ import { logger } from "../utils/logger.js";
  */
 
 export const NIGHTLY_RECONCILIATION_JOB_NAME = "nightly-reconciliation";
+const WALLET_AUTOTOPUP_REPAIR_LOOKBACK_DAYS = 14;
+
+export async function repairMissedWalletAutoTopups(): Promise<{
+  examined: number;
+  repaired: number;
+}> {
+  const lookbackStart = new Date();
+  lookbackStart.setUTCDate(lookbackStart.getUTCDate() - WALLET_AUTOTOPUP_REPAIR_LOOKBACK_DAYS);
+  lookbackStart.setUTCHours(0, 0, 0, 0);
+
+  const candidates = await Invoice.find({
+    status: "failed",
+    description: "Wallet Auto Top-Up",
+    createdAt: { $gte: lookbackStart },
+    nombaOrderReference: { $exists: true, $ne: "" },
+  });
+
+  if (candidates.length === 0) {
+    return { examined: 0, repaired: 0 };
+  }
+
+  let repaired = 0;
+
+  for (const invoice of candidates) {
+    try {
+      const orderReference = invoice.nombaOrderReference;
+      if (!orderReference) continue;
+
+      const checkoutTransaction = await nombaService.fetchCheckoutTransaction(orderReference);
+      if (!checkoutTransaction.success) {
+        continue;
+      }
+
+      const checkoutAmountKobo = Math.round(Number(checkoutTransaction.order.amount) * 100);
+      if (Number.isFinite(checkoutAmountKobo) && checkoutAmountKobo !== invoice.amount) {
+        logger.warn(
+          {
+            invoiceId: invoice._id,
+            orderReference,
+            checkoutAmountKobo,
+            invoiceAmountKobo: invoice.amount,
+          },
+          "Skipping wallet auto top-up repair due to amount mismatch"
+        );
+        continue;
+      }
+
+      const wallet = await Wallet.findOne({
+        tenantId: invoice.tenantId,
+        customerId: invoice.customerId,
+      });
+
+      if (!wallet) {
+        logger.warn(
+          { invoiceId: invoice._id, tenantId: invoice.tenantId, customerId: invoice.customerId },
+          "Skipping wallet auto top-up repair because wallet was not found"
+        );
+        continue;
+      }
+
+      const referenceId = invoice._id.toString();
+      let repairedWalletCredit = false;
+      let repairedLedgerCredit = false;
+
+      const walletTransactionExists = await WalletTransaction.exists({
+        referenceId,
+        type: "credit",
+      });
+      const ledgerTransactionExists = await LedgerTransaction.exists({
+        referenceId,
+        type: "CREDIT",
+      });
+
+      if (!walletTransactionExists) {
+        await creditWallet(
+          wallet._id,
+          invoice.amount,
+          "Auto Top-Up Reconciliation",
+          referenceId
+        );
+        repairedWalletCredit = true;
+      }
+
+      if (!ledgerTransactionExists) {
+        await ledgerService.creditTenant(invoice.tenantId, invoice.amount, referenceId);
+        repairedLedgerCredit = true;
+      }
+
+      const shouldMarkPaid =
+        invoice.status !== "paid" ||
+        !invoice.paidAt ||
+        invoice.nombaTransactionId !== orderReference ||
+        invoice.nombaTransactionRef !== checkoutTransaction.transactionDetails?.paymentReference;
+
+      if (shouldMarkPaid) {
+        invoice.status = "paid";
+        invoice.paidAt = invoice.paidAt ?? new Date();
+        invoice.nombaTransactionId = invoice.nombaTransactionId ?? orderReference;
+        if (checkoutTransaction.transactionDetails?.paymentReference) {
+          invoice.nombaTransactionRef =
+            invoice.nombaTransactionRef ?? checkoutTransaction.transactionDetails.paymentReference;
+        }
+        await invoice.save();
+      }
+
+      if (repairedWalletCredit || repairedLedgerCredit || shouldMarkPaid) {
+        await queueEmail("customer", "wallet_topped_up", {
+          tenantId: invoice.tenantId,
+          customerId: invoice.customerId,
+          topupAmount: invoice.amount,
+        });
+      }
+
+      repaired++;
+      logger.info(
+        {
+          invoiceId: invoice._id,
+          orderReference,
+          repairedWalletCredit,
+          repairedLedgerCredit,
+          markedPaid: shouldMarkPaid,
+        },
+        "Repaired missed wallet auto top-up"
+      );
+    } catch (error) {
+      logger.warn(
+        {
+          invoiceId: invoice._id,
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+        "Failed to repair wallet auto top-up invoice"
+      );
+    }
+  }
+
+  return { examined: candidates.length, repaired };
+}
 
 export function defineNightlyReconciliationJob(agenda: Agenda): void {
   agenda.define(NIGHTLY_RECONCILIATION_JOB_NAME, async (_job) => {
@@ -253,6 +394,14 @@ export function defineNightlyReconciliationJob(agenda: Agenda): void {
             "Failed to send reconciliation alert email"
           );
         }
+      }
+
+      const repairSummary = await repairMissedWalletAutoTopups();
+      if (repairSummary.repaired > 0) {
+        logger.info(
+          repairSummary,
+          "Wallet auto top-up repair pass completed"
+        );
       }
 
       logger.info("Nightly reconciliation job completed");

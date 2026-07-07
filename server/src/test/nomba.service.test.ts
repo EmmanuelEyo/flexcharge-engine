@@ -105,6 +105,88 @@ test("Nomba Service Payload Construction", async (t) => {
     }
   });
 
+  await t.test("treats approved tokenized charge with top-level status false as success", async () => {
+    console.log("[NOMBA][TEST] validating approved charge normalization");
+    nombaService.clearTokenCache();
+
+    (nombaService as any).client = {
+      post: async (_path: string, _body: any, _options: any) => {
+        return {
+          data: {
+            code: "00",
+            description: "Success",
+            status: false,
+            data: {
+              status: true,
+              message: "Approved",
+            },
+          },
+        };
+      },
+    };
+    (nombaService as any).getValidToken = async () => "cached-token";
+    (nombaService as any).isSandbox = true;
+
+    try {
+      const result = await nombaService.chargeTokenizedCard({
+        tokenKey: "tok_approved",
+        orderReference: "inv_approved_001",
+        amount: 10000,
+        currency: "NGN",
+        customerEmail: "customer@example.com",
+        customerId: "cust_123",
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.requiresOTP, false);
+      assert.strictEqual(result.message, "Approved");
+      assert.strictEqual(result.declineCode, undefined);
+    } finally {
+      restoreNombaServiceMocks();
+    }
+  });
+
+  await t.test("flags OTP-required tokenized charge without crediting it", async () => {
+    console.log("[NOMBA][TEST] validating OTP fallback classification");
+    nombaService.clearTokenCache();
+
+    (nombaService as any).client = {
+      post: async (_path: string, _body: any, _options: any) => {
+        return {
+          data: {
+            code: "00",
+            description: "Success",
+            status: false,
+            data: {
+              status: false,
+              message: "OTP required to complete charge",
+            },
+          },
+        };
+      },
+    };
+    (nombaService as any).getValidToken = async () => "cached-token";
+    (nombaService as any).isSandbox = true;
+
+    try {
+      const result = await nombaService.chargeTokenizedCard({
+        tokenKey: "tok_otp",
+        orderReference: "inv_otp_001",
+        amount: 10000,
+        currency: "NGN",
+        customerEmail: "customer@example.com",
+        customerId: "cust_123",
+      });
+
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.requiresOTP, true);
+      assert.strictEqual(result.message, "OTP required to complete charge");
+      assert.strictEqual(result.declineCode, "00");
+    } finally {
+      restoreNombaServiceMocks();
+    }
+  });
+
   await t.test("builds a sub-account verification request", async () => {
     console.log("[NOMBA][TEST] validating transaction verification payload");
     nombaService.clearTokenCache();
