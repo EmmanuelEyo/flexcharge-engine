@@ -401,22 +401,27 @@ export async function updatePayoutSettings(
   try {
     const data = req.body as UpdatePayoutSettingsInput;
 
-    const tenant = await Tenant.findByIdAndUpdate(
-      req.tenantId,
-      {
-        $set: {
-          payoutSchedule: data.payoutSchedule,
-          payoutThreshold: data.payoutThreshold,
-          payoutDayOfWeek: data.payoutDayOfWeek,
-          payoutDayOfMonth: data.payoutDayOfMonth,
-        },
-      },
-      { returnDocument: "after" }
-    );
-
+    const tenant = await Tenant.findById(req.tenantId);
     if (!tenant) {
       throw new AppError("Tenant not found", 404);
     }
+
+    if (
+      !tenant.settlementAccount ||
+      !tenant.settlementAccount.accountNumber ||
+      !tenant.settlementAccount.bankCode
+    ) {
+      throw new AppError(
+        "You must configure a settlement bank account before setting up automated payout settings.",
+        400
+      );
+    }
+
+    tenant.payoutSchedule = data.payoutSchedule;
+    tenant.payoutThreshold = data.payoutThreshold;
+    tenant.payoutDayOfWeek = data.payoutDayOfWeek;
+    tenant.payoutDayOfMonth = data.payoutDayOfMonth;
+    await tenant.save();
 
     logger.info({ tenantId: req.tenantId }, "Payout settings updated");
 

@@ -39,8 +39,16 @@ export async function listInvoices(
     }
 
     const invoices = await Invoice.find(filter)
-      .populate("subscriptionId", "status planId")
+      .populate({
+        path: "subscriptionId",
+        select: "status planId",
+        populate: {
+          path: "planId",
+          select: "name",
+        },
+      })
       .populate("customerId", "email name")
+      .populate("tenantId", "name logoUrl")
       .sort({ createdAt: -1 });
 
     sendSuccess(res, invoices);
@@ -63,8 +71,16 @@ export async function getInvoice(
       ...tenantFilter(req),
       _id: req.params.id,
     })
-      .populate("subscriptionId", "status planId")
-      .populate("customerId", "email name");
+      .populate({
+        path: "subscriptionId",
+        select: "status planId",
+        populate: {
+          path: "planId",
+          select: "name",
+        },
+      })
+      .populate("customerId", "email name")
+      .populate("tenantId", "name logoUrl");
 
     if (!invoice) {
       throw new NotFoundError("Invoice");

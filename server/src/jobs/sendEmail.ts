@@ -1,5 +1,6 @@
 
 import { Types } from "mongoose";
+import jwt from "jsonwebtoken";
 import { Tenant } from "../models/Tenant.js";
 import { Customer } from "../models/Customer.js";
 import { Plan } from "../models/Plan.js";
@@ -141,7 +142,25 @@ export async function processEmailPayload(data: EmailJobPayload): Promise<void> 
 
       if (data.recipientType === "customer") {
         switch (data.type) {
-          case "welcome":
+          case "welcome": {
+            let finalPortalUrl = `${env.FRONTEND_URL}/portal`;
+            if (customer) {
+              try {
+                const token = jwt.sign(
+                  {
+                    customerId: customer._id.toString(),
+                    tenantId: tenant._id.toString(),
+                    type: "portal",
+                  },
+                  env.PORTAL_JWT_SECRET,
+                  { expiresIn: env.PORTAL_JWT_EXPIRES_IN as any }
+                );
+                finalPortalUrl = `${env.FRONTEND_URL}/portal?token=${token}`;
+              } catch (err) {
+                logger.error({ err, customerId: customer._id }, "Failed to sign welcome email portal link");
+              }
+            }
+
             subject = `Welcome to ${tenant.name} — Your subscription is active!`;
             element = React.createElement(WelcomeEmail, {
               customerName: customer?.name || "there",
@@ -150,9 +169,10 @@ export async function processEmailPayload(data: EmailJobPayload): Promise<void> 
               interval: plan?.interval || "month",
               tenantName: tenant.name,
               hasPaymentToken: !!subscription?.tokenKey,
-              portalUrl: data.portalUrl || `${env.FRONTEND_URL}/portal`,
+              portalUrl: data.portalUrl || finalPortalUrl,
             });
             break;
+          }
 
           case "portal_link":
             if (!data.portalUrl) {

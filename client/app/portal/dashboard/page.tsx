@@ -28,6 +28,10 @@ interface Invoice {
   amount: number;
   status: string;
   createdAt: string;
+  tenantId?: {
+    name: string;
+    logoUrl?: string;
+  };
 }
 
 interface Wallet {
@@ -314,7 +318,7 @@ function PortalDashboardContent() {
           </style>
         </head>
         <body>
-          <h1>Receipt from ${customer?.tenantId?.name || "FlexCharge"}</h1>
+          <h1>Receipt from ${inv.tenantId?.name || customer?.tenantId?.name || "FlexCharge"}</h1>
           <div class="meta">
             <p>Invoice ID: ${inv._id}</p>
             <p>Date: ${new Date(inv.createdAt).toLocaleDateString()}</p>
