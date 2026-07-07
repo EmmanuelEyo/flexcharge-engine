@@ -759,6 +759,7 @@ class NombaService {
     success: boolean;
     requiresOTP?: boolean;
     message: string;
+    declineCode?: string;
   }> {
     const authHeaders = await this.getAuthHeaders();
 
@@ -808,6 +809,7 @@ class NombaService {
     // Strict check on the top-level status
     const topLevelStatus = response.data.status;
     const isTopLevelSuccess =
+      topLevelStatus === undefined ||
       topLevelStatus === true ||
       topLevelStatus === "true" ||
       (typeof topLevelStatus === "string" && topLevelStatus.toLowerCase() === "true");
@@ -819,7 +821,7 @@ class NombaService {
       statusRaw === "true" ||
       (typeof statusRaw === "string" && statusRaw.toLowerCase() === "true");
 
-    // We only consider it a full success if topLevelStatus is true AND inner data.status is true
+    // We only consider it a full success if topLevelStatus is true (or undefined) AND inner data.status is true
     const success = outerSuccess && isTopLevelSuccess && innerSuccess;
     
     // Check if the response explicitly requires an OTP
@@ -828,6 +830,8 @@ class NombaService {
                         data.message.toLowerCase().includes("otp");
 
     const message = data?.message ?? description ?? (success ? "success" : "failed");
+
+    const declineCode = success ? undefined : code;
 
     logger.info(
       {
@@ -839,13 +843,14 @@ class NombaService {
         requiresOTP,
         success,
         message,
+        declineCode,
         amountNaira: amountInNaira,
         currency: params.currency ?? "NGN",
       },
       "Nomba tokenized card charge completed"
     );
 
-    return { success, requiresOTP, message };
+    return { success, requiresOTP, message, declineCode };
   }
 
   // ============================================================
@@ -1609,6 +1614,105 @@ class NombaService {
     );
 
     return { success, message };
+  }
+
+  // ============================================================
+  // SUB-ACCOUNT TRANSACTION LIST (Reconciliation)
+  // Per Nomba API: GET /v1/transactions/accounts/{accountId}
+  // ============================================================
+
+  /**
+   * Fetch a paginated list of transactions for the sub-account.
+   *
+   * Used by the nightly reconciliation job to compare Nomba's
+   * authoritative transaction records against our internal ledger.
+   *
+   * @param startDate - ISO 8601 date string (inclusive start)
+   * @param endDate   - ISO 8601 date string (inclusive end)
+   * @param page      - 0-indexed page number (defaults to 0)
+   * @param limit     - Items per page (defaults to 100)
+   */
+  async getSubaccountTransactions(
+    startDate: string,
+    endDate: string,
+    page: number = 0,
+    limit: number = 100
+  ): Promise<{
+    transactions: Array<{
+      transactionId: string;
+      amount: number;
+      type: string;
+      status: string;
+      orderReference?: string;
+      merchantTxRef?: string;
+      createdAt?: string;
+    }>;
+    totalCount: number;
+    currentPage: number;
+    hasMore: boolean;
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+    const subAccountId = env.NOMBA_SUB_ACCOUNT_ID;
+
+    const response = await this.client.get(
+      `/v1/transactions/accounts/${subAccountId}`,
+      {
+        params: {
+          startDate,
+          endDate,
+          page,
+          limit,
+        },
+        headers: authHeaders,
+      }
+    );
+
+    const { code, description, data } = response.data;
+
+    if (code !== "00" && code !== "200") {
+      throw new Error(
+        `Nomba getSubaccountTransactions failed [${code}]: ${description}`
+      );
+    }
+
+    // Normalize the response — Nomba may use different shapes for the list
+    let transactions: any[] = [];
+    if (Array.isArray(data)) {
+      transactions = data;
+    } else if (Array.isArray(data?.results)) {
+      transactions = data.results;
+    } else if (Array.isArray(data?.transactions)) {
+      transactions = data.transactions;
+    }
+
+    const totalCount = data?.totalCount ?? data?.total ?? transactions.length;
+    const hasMore = transactions.length === limit;
+
+    logger.info(
+      {
+        startDate,
+        endDate,
+        page,
+        fetched: transactions.length,
+        totalCount,
+      },
+      "Nomba sub-account transactions fetched for reconciliation"
+    );
+
+    return {
+      transactions: transactions.map((tx: any) => ({
+        transactionId: tx.transactionId || tx.id || "",
+        amount: typeof tx.amount === "number" ? tx.amount : parseFloat(tx.amount) || 0,
+        type: tx.type || "",
+        status: tx.status || "",
+        orderReference: tx.orderReference || tx.reference || "",
+        merchantTxRef: tx.merchantTxRef || "",
+        createdAt: tx.createdAt || tx.time || tx.transactionDate || "",
+      })),
+      totalCount,
+      currentPage: page,
+      hasMore,
+    };
   }
 
   // UTILITY — for testing and health checks

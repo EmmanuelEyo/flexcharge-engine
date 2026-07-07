@@ -14,6 +14,7 @@ import { defineCleanupPendingSubscriptionsJob, CLEANUP_PENDING_SUBS_JOB_NAME } f
 import { defineScheduledPayoutsJob, SCHEDULED_PAYOUTS_JOB_NAME } from "../jobs/processScheduledPayouts.js";
 import { defineMandateSyncJob, MANDATE_SYNC_JOB_NAME } from "../jobs/mandateSync.js";
 import { registerCardExpiryReminderJob, CARD_EXPIRY_REMINDER_JOB_NAME } from "../jobs/cardExpiryReminder.js";
+import { defineNightlyReconciliationJob, NIGHTLY_RECONCILIATION_JOB_NAME } from "../jobs/nightlyReconciliation.js";
 
 /**
  * Agenda configuration — MongoDB-backed job scheduler.
@@ -56,6 +57,7 @@ export function getAgenda(): Agenda {
     defineScheduledPayoutsJob(agenda);
     defineMandateSyncJob(agenda);
     registerCardExpiryReminderJob(agenda);
+    defineNightlyReconciliationJob(agenda);
 
     // Error handling
     agenda.on("error", (err) => {
@@ -142,6 +144,9 @@ export async function startAgenda(): Promise<void> {
 
   // Send card expiry reminders daily at 9:00 AM UTC
   await agendaInstance.every("0 9 * * *", CARD_EXPIRY_REMINDER_JOB_NAME);
+
+  // Nightly reconciliation: run daily at 2:00 AM UTC
+  await agendaInstance.every("0 2 * * *", NIGHTLY_RECONCILIATION_JOB_NAME);
 
   logger.info("Agenda scheduler started with recurring jobs");
 }

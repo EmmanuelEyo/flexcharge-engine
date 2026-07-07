@@ -376,7 +376,7 @@
     "/subscriptions/{id}/change-plan": {
       "post": {
         "tags": ["Subscriptions"],
-        "summary": "Change subscription plan",
+        "summary": "Change subscription plan (Synchronous)",
         "security": [
           {
             "apiKeyAuth": []
@@ -405,6 +405,94 @@
         "responses": {
           "200": {
             "description": "Subscription plan changed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}/change-plan-checkout": {
+      "post": {
+        "tags": ["Subscriptions"],
+        "summary": "Change subscription plan (Checkout Link)",
+        "description": "Generates a checkout link for the prorated upgrade difference. Upgrades asynchronously via webhook upon payment.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePlan"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checkout link generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subscriptions/{id}/simulate-change": {
+      "post": {
+        "tags": ["Subscriptions"],
+        "summary": "Simulate subscription plan change (Dry-run)",
+        "description": "Calculates the prorated credit/debt difference of switching to a new plan, returning details without modifying subscription state.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePlan"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Proration simulation computed successfully",
             "content": {
               "application/json": {
                 "schema": {

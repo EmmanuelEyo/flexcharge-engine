@@ -4,7 +4,8 @@ import {
   setBankAccount, 
   requestWithdrawal,
   processRefund,
-  getBanksList
+  getBanksList,
+  lookupBankAccount
 } from "../controllers/ledger.controller.js";
 import { authenticate, authenticateJWT } from "../middleware/authenticate.js";
 
@@ -27,6 +28,12 @@ router.get("/dashboard/balance", getLedgerBalance);
  * Fetch the list of banks from Nomba.
  */
 router.get("/dashboard/banks", getBanksList);
+
+/**
+ * GET /api/ledger/dashboard/lookup-bank?bankCode=...&accountNumber=...
+ * Look up a bank account name via Nomba before saving.
+ */
+router.get("/dashboard/lookup-bank", lookupBankAccount);
 
 /**
  * POST /api/ledger/dashboard/bank-account

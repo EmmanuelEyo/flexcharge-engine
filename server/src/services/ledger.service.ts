@@ -82,6 +82,48 @@ class LedgerService {
       throw new Error("Insufficient ledger balance for withdrawal");
     }
 
+    // === PRE-WITHDRAWAL BANK VERIFICATION ===
+    // Re-verify the settlement account before every withdrawal to catch
+    // closed accounts, changed ownership, or stale details.
+    try {
+      const verifyResult = await nombaService.lookupBankAccount(bankCode, accountNumber);
+      if (!verifyResult.accountName) {
+        throw new Error(
+          "Bank account verification failed: Could not resolve account name. " +
+          "Please update your settlement bank account details."
+        );
+      }
+
+      // Compare account names (case-insensitive, trimmed) for significant drift.
+      // We use a loose comparison to allow minor formatting differences (e.g. "JOHN DOE" vs "John Doe").
+      const storedName = (accountName || "").toLowerCase().trim();
+      const verifiedName = verifyResult.accountName.toLowerCase().trim();
+      if (storedName && verifiedName && storedName !== verifiedName) {
+        logger.warn(
+          { tenantId, storedName, verifiedName, bankCode, accountNumber },
+          "Settlement account name mismatch detected during pre-withdrawal verification"
+        );
+        // Update the stored account name to the latest verified name
+        const tenantRecord = await Tenant.findById(tenantId);
+        if (tenantRecord && tenantRecord.settlementAccount) {
+          tenantRecord.settlementAccount.accountName = verifyResult.accountName;
+          await tenantRecord.save();
+          logger.info({ tenantId }, "Updated settlement account name to verified value");
+        }
+      }
+    } catch (verifyError) {
+      // If the verification itself fails (network error, etc.), we still allow
+      // the withdrawal to proceed — the Nomba transfer will catch invalid accounts.
+      // Only block on explicit "could not resolve" errors thrown above.
+      if (verifyError instanceof Error && verifyError.message.includes("Could not resolve")) {
+        throw verifyError;
+      }
+      logger.warn(
+        { tenantId, error: verifyError instanceof Error ? verifyError.message : "Unknown" },
+        "Pre-withdrawal bank verification failed (non-blocking) — proceeding with withdrawal"
+      );
+    }
+
     // Generate a unique reference
     const merchantTxRef = `wd_${tenantId}_${Date.now()}`;
 

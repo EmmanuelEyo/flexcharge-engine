@@ -237,6 +237,7 @@ export async function processDunningRetry(
 
     let chargeSuccess = false;
     let chargeMessage = "";
+    let declineCode: string | undefined = undefined;
 
     if (subscription.automaticMethod === "direct_debit") {
       // === DIRECT DEBIT DUNNING RETRY ===
@@ -293,6 +294,7 @@ export async function processDunningRetry(
       });
       chargeSuccess = cardResult.success;
       chargeMessage = cardResult.message;
+      declineCode = cardResult.declineCode;
     }
 
     if (chargeSuccess) {
@@ -351,8 +353,6 @@ export async function processDunningRetry(
       return { success: true };
     } else {
       // === DUNNING FAILED ===
-      // Nomba tokenized card endpoint doesn't return a granular decline code
-      const declineCode: string | undefined = undefined;
       const classification = declineCode
         ? classifyDeclineCode(declineCode)
         : null;

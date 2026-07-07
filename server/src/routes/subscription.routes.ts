@@ -5,6 +5,7 @@ import {
   getSubscription,
   cancelSubscription,
   changeSubscriptionPlan,
+  changePlanCheckout,
   simulateChangePlan,
   pauseSubscription,
   resumeSubscription,
@@ -38,6 +39,7 @@ router.get("/", listSubscriptions);
 router.get("/:id", getSubscription);
 router.post("/:id/cancel", validate(cancelSubscriptionSchema), cancelSubscription);
 router.post("/:id/change-plan", validate(changePlanSchema), changeSubscriptionPlan);
+router.post("/:id/change-plan-checkout", validate(changePlanSchema), changePlanCheckout);
 router.post("/:id/simulate-change", validate(simulateChangePlanSchema), simulateChangePlan);
 router.post("/:id/pause", pauseSubscription);
 router.post("/:id/resume", resumeSubscription);
