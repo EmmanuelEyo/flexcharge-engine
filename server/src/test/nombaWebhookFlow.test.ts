@@ -118,7 +118,7 @@ test("Nomba Webhook Flow", async (t) => {
 
     const rawPayload = JSON.stringify(payload);
     const timestamp = new Date().toISOString();
-    const validSecret = env.NOMBA_WEBHOOK_SECRET || "NombaHackathon2026";
+    const validSecret = env.NOMBA_WEBHOOK_SECRET;
     
     // Minimal signature logic for this mock payload
     const eventType = payload.event_type || "";

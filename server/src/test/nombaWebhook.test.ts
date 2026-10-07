@@ -60,7 +60,7 @@ test("Nomba Webhook Security \u0026 Ingestion Receiver", async (t) => {
   };
 
   await t.test("Valid signature returns 200 OK", async () => {
-    const validSecret = env.NOMBA_WEBHOOK_SECRET || "NombaHackathon2026";
+    const validSecret = env.NOMBA_WEBHOOK_SECRET;
     const signature = generateSig(validSecret);
 
     const response = await request(app)
